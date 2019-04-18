@@ -1,0 +1,7 @@
+numpy
+opencv-contrib-python
+pillow
+rtree
+scikit-learn
+scipy
+sqlalchemy
