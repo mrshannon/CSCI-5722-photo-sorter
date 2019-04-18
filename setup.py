@@ -25,8 +25,8 @@ setup(
     packages=find_packages(),
     install_requires=[
         'numpy',
-        'opencv-contrib-python',
-        'pillow'
+        'opencv-contrib-python==4.0.1',
+        'pillow',
         'rtree',
         'scikit-learn',
         'scipy',

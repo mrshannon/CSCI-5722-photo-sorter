@@ -1,5 +1,5 @@
 numpy
-opencv-contrib-python
+opencv-contrib-python==4.0.1
 pillow
 rtree
 scikit-learn
