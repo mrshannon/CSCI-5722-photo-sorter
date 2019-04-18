@@ -23,6 +23,7 @@ setup(
     description='Sort photos based on scene.',
     url='https://github.com/mrshannon/CSCI-5722-photo-sorter',
     packages=find_packages(),
+    scripts=['bin/phos'],
     install_requires=[
         'numpy',
         'opencv-contrib-python==4.0.1',

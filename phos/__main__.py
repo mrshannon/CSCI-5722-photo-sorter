@@ -153,7 +153,11 @@ def _create_parser():
     return parser
 
 
-if __name__ == '__main__':
+def main():
     parser = _create_parser()
     print(parser.parse_args())
     # print('Hello')
+
+
+if __name__ == '__main__':
+    main()
