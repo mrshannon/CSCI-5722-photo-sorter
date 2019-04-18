@@ -121,3 +121,58 @@ def resize_mp(image, megapixels, *, upscale=False, integer=False):
         return image.resize(new_shape, resample=Image.NEAREST)
     except (AttributeError, TypeError):
         return cv.resize(image, new_shape, interpolation=cv.INTER_AREA)
+
+
+def translate(dx=0, dy=0):
+    """Return 2D translation matrix.
+
+    Parameters
+    ----------
+    dx : float
+        Amount to translate in x direction.
+    dy : float
+        Amount to translate in y direction.
+
+    Returns
+    -------
+    3x3 array
+        Translation matrix.
+
+    """
+    return np.array([[1, 0, dx], [0, 1, dy], [0, 0, 1]])
+
+
+def rotate(angle):
+    """Return rotation matrix.
+
+    Parameters
+    ----------
+    angle : float
+        Angle to rotate by.
+
+    Returns
+    -------
+    3x3 array
+        Rotation matrix.
+
+    """
+    return np.vstack([cv.getRotationMatrix2D((0, 0), angle, 1.0), [0, 0, 1]])
+
+
+def scale(sx=1, sy=1):
+    """Return scaling matrix.
+
+    Parameters
+    ----------
+    sx : float
+        Scale factor in x direction.
+    sy : float
+        Scale factor in y direction.
+
+    Returns
+    -------
+    3x3 array
+        Scaling matrix.
+
+    """
+    return np.array([[sx, 0, 0], [0, sy, 0], [0, 0, 1]])
