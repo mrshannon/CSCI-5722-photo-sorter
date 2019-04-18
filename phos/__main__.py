@@ -1,5 +1,30 @@
 import argparse
 
+from phos.features import ExtractorID
+
+
+def _method_id(name):
+    """Get the numeric ID of a feature extractor method by name.
+
+    Parameters
+    ----------
+    name : str
+        Name of the feature extractor, not case senstive.
+
+    Returns
+    -------
+    ExtractorID/int
+        Numeric (enum) ID of the given feature extractor name.
+
+    """
+    mapping = {
+        'SURF64': ExtractorID.SURF64,
+        'SURF128': ExtractorID.SURF128,
+        'LABSURF96': ExtractorID.LABSURF96,
+        'LABSURF160': ExtractorID.LABSURF160
+    }
+    return mapping[name.upper()]
+
 
 def _add_init_parser(subparsers):
     parser = subparsers.add_parser(
@@ -105,7 +130,7 @@ def _add_new_wordlist_parser(subparsers):
         help=('maximum number of files to use, if more are given the images '
               'used will be chosen at random, default: use all'))
     parser.add_argument(
-        '--method', type=str, default='LABSURF96',
+        '--method', type=_method_id, default='LABSURF96',
         help=('set the feature extraction method to use: SURF64, SURF128, '
               'LABSURF96 (default), or LABSURF160'))
     parser.add_argument(
@@ -115,6 +140,8 @@ def _add_new_wordlist_parser(subparsers):
 def _create_parser():
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers()
+    subparsers.required = True
+    subparsers.dest = 'command'
     _add_init_parser(subparsers)
     _add_index_parser(subparsers)
     _add_cluster_parser(subparsers)
