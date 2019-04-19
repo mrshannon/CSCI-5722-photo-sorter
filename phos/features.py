@@ -118,8 +118,9 @@ class SURFExtractor(FeatureExtractor):
         self._feature_dtype = np.dtype(
             [*_common_feature_fields,
              ('descriptor', np.float32, (128 if surf128 else 64,))])
+        # these are the defaults for OpenCV as of version 4.1.0
         self._detector = cv.xfeatures2d_SURF.create(
-            hessianThreshold=400,
+            hessianThreshold=100,
             nOctaves=4,
             nOctaveLayers=3,
             extended=surf128,
@@ -151,7 +152,9 @@ class SURFExtractor(FeatureExtractor):
             image = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
         keypoints = self._detector.detect(image)
         keypoints, descriptors = self._detector.compute(image, keypoints)
-        if max_features:
+        if not keypoints:
+            return np.empty((0,), dtype=self._feature_dtype)
+        if max_features and max_features < len(keypoints):
             keypoints = keypoints[0:max_features]
             descriptors = descriptors[0:max_features, :]
         return self._pack_results(self._feature_dtype, keypoints, descriptors)
@@ -192,7 +195,7 @@ class LABSURFExtractor(SURFExtractor):
         super().__init__(surf128=surf128)
         self._feature_dtype = np.dtype(
             [*_common_feature_fields,
-             ('descriptor', np.float32, ((128 if surf128 else 64 + 32),))])
+             ('descriptor', np.float32, ((160 if surf128 else 96),))])
         self._color_weight = color_weight
 
     def _extract(self, image, max_features=None):
@@ -218,8 +221,9 @@ class LABSURFExtractor(SURFExtractor):
 
         """
         if image.ndim == 2:
-            L = image
-            return SURFExtractor.extract(L)
+            results = super()._extract(image)
+            results['descriptor'][:, -32:] = 0
+            return results
 
         lab = cv.cvtColor(image, cv.COLOR_BGR2Lab)
         results = super()._extract(lab[:, :, 0], max_features=max_features)
@@ -291,7 +295,7 @@ def extract_keypoint(image, x, y, angle, size):
         flags=cv.INTER_AREA, borderMode=cv.BORDER_CONSTANT)
 
 
-def create_feature_extractor(id):
+def create_feature_extractor(id=None):
     """Construct a feature extractor given the numeric ID/Enum.
 
     Parameters
@@ -305,6 +309,8 @@ def create_feature_extractor(id):
         An instance of the corresponding feature extractor.
 
     """
+    if id is None:
+        return LABSURFExtractor()
     if id == ExtractorID.SURF64:
         return SURFExtractor()
     if id == ExtractorID.SURF128:
