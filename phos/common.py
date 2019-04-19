@@ -1,9 +1,25 @@
-import math
+import mimetypes
+import os
+import sys
+
 import cv2 as cv
+import math
 import numpy as np
 from PIL import Image
 
-__all__ = ['cv_image', 'pil_image', 'resize_mp']
+__all__ = ['cv_image', 'pil_image', 'resize_mp', 'is_image_file',
+           'list_files', 'expand_file_list', 'expand_image_file_list']
+
+
+class ImageReadError(Exception):
+    pass
+
+
+def open_image(file):
+    try:
+        return Image.open(file)
+    except:
+        raise ImageReadError(f"Failed to read image '{file}'")
 
 
 def cv_image(image):
@@ -26,7 +42,7 @@ def cv_image(image):
 
     """
     if isinstance(image, str):
-        with Image.open(image) as img:
+        with open_image(image) as img:
             return cv_image(img)
     try:
         if image.mode in ('L', 'RGB'):
@@ -68,7 +84,7 @@ def pil_image(image, bgr=True):
     """
 
     if isinstance(image, str):
-        return Image.open(image)
+        return open_image(image)
     if np.issubdtype(image.dtype, np.integer):
         image = image.astype(np.uint8)
     else:
@@ -100,11 +116,11 @@ def resize_mp(image, megapixels, *, upscale=False, integer=False):
     """
     width = image.shape[1]
     height = image.shape[0]
-    current_megapixels = (width * height)/(10**6)
-    div = math.sqrt(current_megapixels/megapixels)
+    current_megapixels = (width * height) / (10 ** 6)
+    div = math.sqrt(current_megapixels / megapixels)
     if integer:
-        div = round(div) if div > 1 else 1/round(1/div)
-    new_shape = (int(round(width/div)), int(round(height/div)))
+        div = round(div) if div > 1 else 1 / round(1 / div)
+    new_shape = (int(round(width / div)), int(round(height / div)))
 
     if div == 1:
         return image
@@ -176,3 +192,76 @@ def scale(sx=1, sy=1):
 
     """
     return np.array([[sx, 0, 0], [0, sy, 0], [0, 0, 1]])
+
+
+def flatten(list_of_lists):
+    # https://stackoverflow.com/a/952952
+    return [item for sublist in list_of_lists for item in sublist]
+
+
+def is_image_file(file):
+    _supported_image_mimetypes = {
+        'image/bmp',
+        'image/x-windows-bmp',
+        'image/gif',
+        'image/x-icon',
+        'image/jpeg',
+        'image/pjpeg',
+        'image/x-portable-bitmap',
+        'image/x-portable-graymap',
+        'image/png',
+        'image/x-portable-pixmap',
+        'image/tiff',
+        'image/x-tiff',
+        'image/x-xbitmap',
+        'image/x-xbm',
+        'image/xbm',
+        'image/x-xpixmap',
+        'image/xpm',
+    }
+    return mimetypes.guess_type(file)[0] in _supported_image_mimetypes
+
+
+def is_thumbnail_file(file):
+    if not is_image_file(file):
+        return False
+    with open_image(file) as f:
+        size = f.size
+        return size[0] * size[1] < 16384
+
+
+def list_files(dir, filter=None):
+    def true(file):
+        return True
+    if filter is None:
+        filter = true
+    return [os.path.join(dir, file)
+            for dir, _, files in os.walk(dir) for file in files
+            if filter(os.path.join(dir, file))]
+
+
+def expand_file_list(paths, filter=None, *, filter_all=False):
+    def true(path):
+        return True
+    if filter is None:
+        filter = true
+    files = []
+    for path in paths:
+        if os.path.isdir(path):
+            files.extend(list_files(path, filter))
+        elif not filter_all or filter(path):
+            files.append(path)
+    return files
+
+
+def expand_image_file_list(paths, *, catch_errors=False):
+    def filter(file):
+        if catch_errors:
+            try:
+                return is_image_file(file) and not is_thumbnail_file(file)
+            except ImageReadError:
+                print(f"failed to read '{file}', skipping image",
+                      file=sys.stderr)
+                return False
+        return is_image_file(file) and not is_thumbnail_file(file)
+    return expand_file_list(paths, filter, filter_all=True)
