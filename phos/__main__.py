@@ -13,15 +13,15 @@ def _method_id(name):
 
     Returns
     -------
-    ExtractorID/int
+    FeatureExtractorID/int
         Numeric (enum) ID of the given feature extractor name.
 
     """
     mapping = {
-        'SURF64': ExtractorID.SURF64,
-        'SURF128': ExtractorID.SURF128,
-        'LABSURF96': ExtractorID.LABSURF96,
-        'LABSURF160': ExtractorID.LABSURF160
+        'SURF64': FeatureExtractorID.SURF64,
+        'SURF128': FeatureExtractorID.SURF128,
+        'LABSURF96': FeatureExtractorID.LABSURF96,
+        'LABSURF160': FeatureExtractorID.LABSURF160
     }
     return mapping[name.upper()]
 

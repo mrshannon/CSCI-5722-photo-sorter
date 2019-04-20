@@ -6,12 +6,12 @@ import numpy as np
 
 from .common import cv_image, resize_mp
 
-__all__ = ['ExtractorID', 'FeatureExtractor',
+__all__ = ['FeatureExtractorID', 'FeatureExtractor',
            'SURFExtractor', 'LABSURFExtractor',
            'extract_keypoint', 'create_feature_extractor']
 
 
-class ExtractorID(IntEnum):
+class FeatureExtractorID(IntEnum):
     """Feature extractor ID enumeration."""
     SURF64 = 1
     SURF128 = 2
@@ -29,6 +29,11 @@ _common_feature_fields = [
 class FeatureExtractor(ABC):
 
     # must define _feature_dtype in subclass
+
+    @property
+    @abstractmethod
+    def id(self):
+        """Extractor ID from the :class:`FeatureExtractorID` enum."""
 
     def extract(self, image, *, max_features=None, bgr=False):
         """Extract keypoints and descriptors from given image.
@@ -126,6 +131,12 @@ class SURFExtractor(FeatureExtractor):
             extended=surf128,
             upright=False)
 
+    @property
+    def id(self):
+        if self._detector.getExtended():
+            return FeatureExtractorID.SURF128
+        return FeatureExtractorID.SURF64
+
     def _extract(self, image, max_features=None):
         """Extract keypoints and descriptors from given image.
 
@@ -197,6 +208,12 @@ class LABSURFExtractor(SURFExtractor):
             [*_common_feature_fields,
              ('descriptor', np.float32, ((160 if surf128 else 96),))])
         self._color_weight = color_weight
+
+    @property
+    def id(self):
+        if self._detector.getExtended():
+            return FeatureExtractorID.LABSURF160
+        return FeatureExtractorID.LABSURF96
 
     def _extract(self, image, max_features=None):
         """Extract keypoints and descriptors from given image.
@@ -300,7 +317,7 @@ def create_feature_extractor(id=None):
 
     Parameters
     ----------
-    id : ExtractorID/int
+    id : FeatureExtractorID/int
         Id of the feature extractor to construct.
 
     Returns
@@ -311,12 +328,12 @@ def create_feature_extractor(id=None):
     """
     if id is None:
         return LABSURFExtractor()
-    if id == ExtractorID.SURF64:
+    if id == FeatureExtractorID.SURF64:
         return SURFExtractor()
-    if id == ExtractorID.SURF128:
+    if id == FeatureExtractorID.SURF128:
         return SURFExtractor(surf128=True)
-    if id == ExtractorID.LABSURF96:
+    if id == FeatureExtractorID.LABSURF96:
         return LABSURFExtractor()
-    if id == ExtractorID.LABSURF160:
+    if id == FeatureExtractorID.LABSURF160:
         return LABSURFExtractor(surf128=True)
     raise ValueError(f"unknown extractor 'id' ({id})")
