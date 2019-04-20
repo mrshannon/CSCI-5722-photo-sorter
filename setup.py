@@ -28,6 +28,7 @@ setup(
         'numpy',
         'opencv-contrib-python==4.0.1',
         'pillow',
+        'progressbar2',
         'rtree',
         'scikit-learn',
         'scipy',

@@ -1,6 +1,66 @@
 import argparse
+import random
+import sys
+import warnings
 
-from phos.features import ExtractorID
+import progressbar
+
+from phos.common import ImageReadError, expand_image_file_list
+from phos.features import FeatureExtractorID
+from phos.wordlist import WordlistGenerator, save_wordlist
+
+
+class CommandLineError(Exception):
+    pass
+
+
+class ProgressBar(progressbar.ProgressBar):
+
+    def __init__(self, name=None, max_value=None, *args, **kwargs):
+        super().__init__(*args, max_value=max_value, **kwargs)
+        self._name = name
+
+    @staticmethod
+    def __bar_widgets():
+        widgets = [
+            progressbar.Timer('%(elapsed)s'), ' ',
+            '(', progressbar.SimpleProgress(), ') ',
+            progressbar.Bar(marker='#', left='[', right=']'), ' ',
+            progressbar.Percentage(), ' ',
+            progressbar.ETA(
+                format_not_started='ETA --:--:--',
+                format_finished='            ',
+                format='ETA %(eta)8s',
+                format_zero='ETA 00:00:00',
+                format_NA='ETA N/A')
+        ]
+        return widgets
+
+    @staticmethod
+    def __bouncing_bar_widgets():
+        widgets = [
+            progressbar.Timer('%(elapsed)s'), ' ',
+            '(', progressbar.Counter(), ') ',
+            progressbar.BouncingBar(marker='◼', left='[', right=']')
+        ]
+        return widgets
+
+    def __default_widgets(self):
+        if self.max_value:
+            return self.__bar_widgets()
+        return self.__bouncing_bar_widgets()
+
+    def default_widgets(self):
+        if self._name:
+            return [f'{self._name}:  '] + self.__default_widgets()
+        return self.__default_widgets()
+
+
+def _progress(progress=False, name=None):
+    if progress:
+        # return progressbar.progressbar
+        return ProgressBar(name=name)
+    return lambda x: x
 
 
 def _method_id(name):
@@ -72,7 +132,7 @@ def _add_keyword_parser(subparsers):
     parser = subparsers.add_parser(
         'keyword', help='list images with the given keyword')
     parser.add_argument(
-        'keyword',  metavar='KEYWORD', type=str,
+        'keyword', metavar='KEYWORD', type=str,
         help='keyword to list matching images for')
     parser.add_argument(
         '-d', '--display', action='store_true',
@@ -123,18 +183,28 @@ def _add_new_wordlist_parser(subparsers):
         '-n', '--size', metavar='N', type=int, default=1000,
         help='number of visual words to generate, default: 1000')
     parser.add_argument(
-        '--max-features', metavar='N', type=int, default=None,
-        help='maximum number of features to use per image, default: use all')
-    parser.add_argument(
-        '--max-files', metavar='N', type=int, default=None,
+        '--max-images', metavar='N', type=int, default=None,
         help=('maximum number of files to use, if more are given the images '
               'used will be chosen at random, default: use all'))
     parser.add_argument(
-        '--method', type=_method_id, default='LABSURF96',
+        '--max-features', metavar='N', type=int, default=None,
+        help=('maximum number of features to use when building the wordlist, '
+              'default: use all'))
+    parser.add_argument(
+        '--max-features-per-image', metavar='N', type=int, default=None,
+        help='maximum number of features to use per image, default: use all')
+    parser.add_argument(
+        '--method', type=_method_id, default=None,
         help=('set the feature extraction method to use: SURF64, SURF128, '
               'LABSURF96 (default), or LABSURF160'))
     parser.add_argument(
-        '-p', '--progress', action='store_true', help='show progress bar')
+        '--fast', action='store_true',
+        help='use fast (mini-batch) k-means intead of regular k-means')
+    parser.add_argument(
+        '-p', '--progress', action='store_true',
+        help='show progress bar, incompatible with --verbose flag')
+    parser.add_argument(
+        '-v', '--verbose', action='store_true', help='enable verbose output')
 
 
 def _create_parser():
@@ -153,10 +223,56 @@ def _create_parser():
     return parser
 
 
+def _new_wordlist(args):
+    # index files
+    if args.progress:
+        print(f"Indexing files...", file=sys.stderr, flush=True)
+    images = expand_image_file_list(args.image, catch_errors=True)
+    if args.max_images is not None and len(images) > args.max_images:
+        images = random.sample(images, args.max_images)
+
+    # extract features from images
+    generator = WordlistGenerator(
+        max_features_per_image=args.max_features_per_image,
+        method_id=args.method)
+    if not images:
+        raise CommandLineError('no images to build wordlist from')
+    for image in _progress(args.progress, 'Extracting features')(images):
+        if args.verbose:
+            print(image, flush=True)
+        try:
+            generator.add_image(image)
+        except ImageReadError:
+            print(f"failed to read '{image}', skipping image",
+                  file=sys.stderr, flush=True)
+
+    # generate wordlist with kmeans
+    num_features = args.max_features if args.max_features \
+        else generator.descriptors().shape[0]
+    if args.progress:
+        print(f'Using K-Means to generate wordlist from {num_features} '
+              'features...',
+              file=sys.stderr, flush=True)
+    words = generator.generate(
+        args.size, max_features=args.max_features, fast=args.fast)
+    save_wordlist(args.file, words, generator.method_id)
+
+
 def main():
-    parser = _create_parser()
-    print(parser.parse_args())
-    # print('Hello')
+    try:
+        warnings.filterwarnings(
+            "ignore", "(Possibly )?corrupt EXIF data", UserWarning)
+        args = _create_parser().parse_args()
+        # print(args)
+        # print('')
+        try:
+            if args.command == 'new-wordlist':
+                _new_wordlist(args)
+        except CommandLineError as err:
+            print('\n' + str(err) + ', exiting', file=sys.stderr)
+            sys.exit(1)
+    except KeyboardInterrupt:
+        sys.exit(2)
 
 
 if __name__ == '__main__':
