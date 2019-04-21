@@ -8,6 +8,7 @@ import progressbar
 from phos.common import ImageReadError, expand_image_file_list
 from phos.features import FeatureExtractorID
 from phos.wordlist import WordlistGenerator, save_wordlist
+from phos.dataset import init_dataset, find_dataset
 
 
 class CommandLineError(Exception):
@@ -86,29 +87,35 @@ def _method_id(name):
     return mapping[name.upper()]
 
 
-def _add_init_parser(subparsers):
+def _init_parser(subparsers):
     parser = subparsers.add_parser(
         'init', help='initialize an image dataset')
     parser.add_argument(
         'directory', metavar='DIR', type=str,
         help='directory to initialize the dataset in')
     parser.add_argument(
-        '--wordlist', metavar='FILE', type=str, default=None,
-        help='wordlist file to use, default: package provided wordlist')
-    parser.add_argument(
-        '--keywords', metavar='FILE', type=str, nargs='+', default=None,
-        help=('keyword files and/or directories to use, '
-              'default: package provided keyword files'))
+        '--method', type=_method_id, default=None,
+        help=('set the feature extraction method to use: SURF64, SURF128, '
+              'LABSURF96 (default), or LABSURF160'))
 
 
-def _add_index_parser(subparsers):
+def _init(args):
+    try:
+        init_dataset(args.directory, method_id=args.method)
+    except (ValueError, FileExistsError) as err:
+        raise CommandLineError(str(err))
+
+
+def _index_parser(subparsers):
     parser = subparsers.add_parser(
         'index', help='index/reindex the images in the dataset')
     parser.add_argument(
         '-p', '--progress', action='store_true', help='show progress bar')
+    parser.add_argument(
+        '-v', '--verbose', action='store_true', help='enable verbose output')
 
 
-def _add_cluster_parser(subparsers):
+def _cluster_parser(subparsers):
     parser = subparsers.add_parser(
         'cluster',
         help=('rearrange similar images into folders and duplicates into '
@@ -117,7 +124,7 @@ def _add_cluster_parser(subparsers):
         '-p', '--progress', action='store_true', help='show progress bar')
 
 
-def _add_similar_parser(subparsers):
+def _similar_parser(subparsers):
     parser = subparsers.add_parser(
         'similar', help='list images similar to the given image')
     parser.add_argument(
@@ -128,7 +135,7 @@ def _add_similar_parser(subparsers):
         help='display images instead of listing them')
 
 
-def _add_keyword_parser(subparsers):
+def _keyword_parser(subparsers):
     parser = subparsers.add_parser(
         'keyword', help='list images with the given keyword')
     parser.add_argument(
@@ -139,7 +146,7 @@ def _add_keyword_parser(subparsers):
         help='display images instead of listing them')
 
 
-def _add_keywords_parser(subparsers):
+def _keywords_parser(subparsers):
     parser = subparsers.add_parser(
         'keywords',
         help=('list available keywords and how many images in the database '
@@ -151,7 +158,7 @@ def _add_keywords_parser(subparsers):
               'in dataset with number of images matching each keyword'))
 
 
-def _add_new_keyword_parser(subparsers):
+def _new_keyword_parser(subparsers):
     parser = subparsers.add_parser(
         'new-keyword', help='create a new keyword file from a group of images')
     parser.add_argument(
@@ -168,7 +175,7 @@ def _add_new_keyword_parser(subparsers):
         '-p', '--progress', action='store_true', help='show progress bar')
 
 
-def _add_new_wordlist_parser(subparsers):
+def _new_wordlist_parser(subparsers):
     parser = subparsers.add_parser(
         'new-wordlist',
         help='create a new wordlist file from a group of images')
@@ -207,22 +214,6 @@ def _add_new_wordlist_parser(subparsers):
         '-v', '--verbose', action='store_true', help='enable verbose output')
 
 
-def _create_parser():
-    parser = argparse.ArgumentParser()
-    subparsers = parser.add_subparsers()
-    subparsers.required = True
-    subparsers.dest = 'command'
-    _add_init_parser(subparsers)
-    _add_index_parser(subparsers)
-    _add_cluster_parser(subparsers)
-    _add_similar_parser(subparsers)
-    _add_keyword_parser(subparsers)
-    _add_keywords_parser(subparsers)
-    _add_new_keyword_parser(subparsers)
-    _add_new_wordlist_parser(subparsers)
-    return parser
-
-
 def _new_wordlist(args):
     # index files
     if args.progress:
@@ -258,6 +249,22 @@ def _new_wordlist(args):
     save_wordlist(args.file, words, generator.method_id)
 
 
+def _create_parser():
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers()
+    subparsers.required = True
+    subparsers.dest = 'command'
+    _init_parser(subparsers)
+    _index_parser(subparsers)
+    _cluster_parser(subparsers)
+    _similar_parser(subparsers)
+    _keyword_parser(subparsers)
+    _keywords_parser(subparsers)
+    _new_keyword_parser(subparsers)
+    _new_wordlist_parser(subparsers)
+    return parser
+
+
 def main():
     try:
         warnings.filterwarnings(
@@ -266,9 +273,11 @@ def main():
         # print(args)
         # print('')
         try:
+            if args.command == 'init':
+                _init(args)
             if args.command == 'new-wordlist':
                 _new_wordlist(args)
-        except CommandLineError as err:
+        except (CommandLineError, RuntimeError) as err:
             print('\n' + str(err) + ', exiting', file=sys.stderr)
             sys.exit(1)
     except KeyboardInterrupt:

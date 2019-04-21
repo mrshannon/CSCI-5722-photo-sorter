@@ -7,8 +7,20 @@ import math
 import numpy as np
 from PIL import Image
 
-__all__ = ['cv_image', 'pil_image', 'resize_mp', 'is_image_file',
-           'list_files', 'expand_file_list', 'expand_image_file_list']
+__all__ = ['Singleton', 'cv_image', 'pil_image', 'resize_mp',
+           'is_image_file', 'list_files', 'expand_file_list',
+           'expand_image_file_list']
+
+
+class Singleton(type):
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super().__call__(*args, **kwargs)
+        else:
+            cls._instances[cls].__init__(*args, **kwargs)
+        return cls._instances[cls]
 
 
 class ImageReadError(Exception):
