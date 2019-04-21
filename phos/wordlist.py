@@ -40,8 +40,8 @@ class WordlistGenerator:
             return self._descriptors[0][idx, :]
         return self._descriptors[0]
 
-    def generate(self, size, *, max_features=None, fast=False):
-        if fast:
+    def generate(self, size, *, max_features=None, minibatch=True):
+        if minibatch:
             kmeans = MiniBatchKMeans(n_clusters=size, init_size=size*100).fit(
                 self.descriptors(max_features=max_features).astype(np.float64))
         else:

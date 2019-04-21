@@ -198,8 +198,8 @@ def _add_new_wordlist_parser(subparsers):
         help=('set the feature extraction method to use: SURF64, SURF128, '
               'LABSURF96 (default), or LABSURF160'))
     parser.add_argument(
-        '--fast', action='store_true',
-        help='use fast (mini-batch) k-means intead of regular k-means')
+        '--slow', action='store_true',
+        help='use regular k-means instead of the faster (mini-batch) k-means')
     parser.add_argument(
         '-p', '--progress', action='store_true',
         help='show progress bar, incompatible with --verbose flag')
@@ -254,7 +254,7 @@ def _new_wordlist(args):
               'features...',
               file=sys.stderr, flush=True)
     words = generator.generate(
-        args.size, max_features=args.max_features, fast=args.fast)
+        args.size, max_features=args.max_features, minibatch=(not args.slow))
     save_wordlist(args.file, words, generator.method_id)
 
 
