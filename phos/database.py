@@ -5,7 +5,7 @@ from sqlalchemy import (Column, ForeignKey, Integer, Float, String, Unicode,
                         LargeBinary, create_engine)
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.orm import relationship, sessionmaker, backref
 
 from .common import Singleton
 
@@ -40,7 +40,8 @@ class Feature(_Base):
     angle = Column(Float, nullable=False)
     size = Column(Integer, nullable=False)
     image_id = Column(Integer, ForeignKey('image.id'), nullable=False)
-    image = relationship('Image', backref='features')
+    image = relationship(
+        'Image', backref=backref('features', cascade='all, delete-orphan'))
     descriptor = Column(LargeBinary())
 
 
@@ -54,7 +55,8 @@ class BagOfWords(_Base):
     __tablename__ = 'bag_of_words'
     id = Column(Integer, primary_key=True)
     image_id = Column(Integer, ForeignKey('image.id'), nullable=False)
-    image = relationship('Image', backref='words')
+    image = relationship(
+        'Image', backref=backref('words', cascade='all, delete-orphan'))
     layer = Column(Integer, nullable=False)
     row = Column(Integer, nullable=False)
     column = Column(Integer, nullable=False)
@@ -75,7 +77,8 @@ class KeywordMatch(_Base):
     image_id = Column(Integer, ForeignKey('image.id'), nullable=False)
     image = relationship('Image', backref='keywords')
     keyword_id = Column(Integer, ForeignKey('keyword.id'), nullable=False)
-    keyword = relationship('Keyword', backref='images')
+    keyword = relationship(
+        'Keyword', backref=backref('images', cascade='all, delete-orphan'))
 
 
 class Database(metaclass=Singleton):
@@ -93,6 +96,9 @@ class Database(metaclass=Singleton):
             self._path = path
             self._engine = create_engine(self._path)
             self._session = sessionmaker(bind=self._engine)
+        self._init_check()
+
+    def _init_check(self):
         if self._engine is None:
             raise ValueError(f"'path' never provided")
 
