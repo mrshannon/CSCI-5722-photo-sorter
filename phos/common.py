@@ -7,8 +7,9 @@ import math
 import numpy as np
 from PIL import Image
 
-__all__ = ['Singleton', 'cv_image', 'pil_image', 'resize_mp',
-           'is_image', 'is_thumbnail',  'files', 'image_files']
+__all__ = ['Singleton', 'open_image', 'image_size', 'cv_image', 'pil_image',
+           'newsize_mp', 'resize_mp', 'flatten', 'is_image', 'is_thumbnail',
+           'files', 'image_files']
 
 
 class Singleton(type):
@@ -35,6 +36,16 @@ def open_image(file):
         return Image.open(file)
     except:
         raise ImageReadError(f"Failed to read image '{file}'")
+
+
+def image_size(image):
+    if isinstance(image, (str, bytes, os.PathLike)):
+        with open_image(image) as img:
+            return image_size(img)
+    try:
+        return image.shape[1], image.shape[0]
+    except AttributeError:
+        return image.size[1], image.size[0]
 
 
 def cv_image(image):
@@ -109,6 +120,16 @@ def pil_image(image, bgr=True):
     return Image.fromarray(image)
 
 
+def newsize_mp(width, height, megapixels, *, upscale=False, integer=False):
+    current_megapixels = (width * height) / (10 ** 6)
+    div = math.sqrt(current_megapixels / megapixels)
+    if integer:
+        div = round(div) if div > 1 else 1 / round(1 / div)
+    if div < 1 and not upscale:
+        return width, height
+    return int(round(width / div)), int(round(height / div))
+
+
 def resize_mp(image, megapixels, *, upscale=False, integer=False):
     """Resize :paramref:`image` to a given :paramref:`megapixel` size.
 
@@ -129,18 +150,20 @@ def resize_mp(image, megapixels, *, upscale=False, integer=False):
     -------
 
     """
-    width = image.shape[1]
-    height = image.shape[0]
-    current_megapixels = (width * height) / (10 ** 6)
-    div = math.sqrt(current_megapixels / megapixels)
-    if integer:
-        div = round(div) if div > 1 else 1 / round(1 / div)
-    new_shape = (int(round(width / div)), int(round(height / div)))
+    try:
+        width = image.size[0]
+        height = image.size[1]
+    except (AttributeError, TypeError):
+        width = image.shape[1]
+        height = image.shape[0]
 
-    if div == 1:
+    new_shape = newsize_mp(
+        width, height, megapixels, upscale=upscale, integer=integer)
+
+    if new_shape[0] == width:
         return image
 
-    if div < 1:
+    if new_shape[0] > width:
         if not upscale:
             return image
         try:
