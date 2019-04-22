@@ -1,6 +1,7 @@
 import mimetypes
 import os
 import warnings
+from pathlib import Path
 
 import cv2 as cv
 import math
@@ -67,7 +68,7 @@ def cv_image(image):
         image.
 
     """
-    if isinstance(image, str):
+    if isinstance(image, (str, bytes, os.PathLike)):
         with open_image(image) as img:
             return cv_image(img)
     try:
@@ -109,7 +110,7 @@ def pil_image(image, bgr=True):
 
     """
 
-    if isinstance(image, str):
+    if isinstance(image, (str, bytes, os.PathLike)):
         return open_image(image)
     if np.issubdtype(image.dtype, np.integer):
         image = image.astype(np.uint8)
@@ -276,14 +277,14 @@ def files(paths, filter=None):
             for file in files_:
                 fullpath = os.path.join(dir, file)
                 if filter(fullpath):
-                    yield fullpath
+                    yield Path(fullpath)
     else:
         # multiple paths
         for path in paths:
             if os.path.isdir(path):
                 yield from files(path, filter)
             elif filter(path):
-                yield path
+                yield Path(path)
 
 
 def image_files(paths):
