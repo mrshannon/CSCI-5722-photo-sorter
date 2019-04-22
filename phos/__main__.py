@@ -117,13 +117,14 @@ def _index_parser(subparsers):
 def _index(args):
     dataset = Dataset()
     with warnings.catch_warnings(record=True) as w:
-        dataset.index(
+        dataset.index_images(
             search_progress=_progress(args.progress, 'Searching for images'),
             index_progress=_progress(args.progress, 'Adding images'))
         for warning in w:
             if warning.category is ImageReadWarning:
                 print(warning.message, file=sys.stderr)
-
+    dataset.index_features(
+        progress=_progress(args.progress, 'Extracting features'))
 
 def _cluster_parser(subparsers):
     parser = subparsers.add_parser(

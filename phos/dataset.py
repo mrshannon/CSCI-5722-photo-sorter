@@ -1,13 +1,16 @@
 from collections.abc import Iterable
-from pathlib import Path
 from itertools import chain
+from pathlib import Path
 
-from .common import image_size, image_files, flatten, get_progress
-from .features import create_feature_extractor
 import phos.database as db
+from .common import image_size, image_files, flatten, get_progress, cv_image
+from .features import create_feature_extractor
+
 # from .image import Image
 
 _DATASET_DIR = '.phos'
+
+_MAX_FEATURES_PER_IMAGE = 1000
 
 
 def init_dataset(path, method_id=None):
@@ -20,7 +23,7 @@ def init_dataset(path, method_id=None):
     except FileExistsError:
         raise FileExistsError(f"existing dataset at '{dataset_path}'")
     method_id = create_feature_extractor(method_id).id
-    db.init_database(dataset_path)
+    db.init(dataset_path)
     with db.session_scope() as session:
         session.add(db.KeyValue(key='method', value=str(int(method_id))))
 
@@ -62,7 +65,7 @@ class Dataset(Iterable):
             session.execute(
                 db.Image.__table__.delete().where(db.Image.path.in_(images)))
 
-    def index(self, *, search_progress=None, index_progress=None):
+    def index_images(self, *, search_progress=None, index_progress=None):
         fs_images = set(
             str(self.relative_path(path))
             for path in get_progress(search_progress)(image_files(self.path)))
@@ -75,12 +78,32 @@ class Dataset(Iterable):
             progress=index_progress)
         self._remove_images(db_images.difference(fs_images))
 
+    def index_features(self, *, progress=None):
+        # get image id's without features
+        with db.session_scope() as session:
+            ids = flatten(session.query(db.Image.id).filter(
+                ~db.Image.features_indexed).all())
+        for id in get_progress(progress)(ids):
+            # session inside loop so crashes don't undo all progress
+            with db.session_scope() as session:
+                image = session.query(db.Image).get(id)
+                features = self._feature_extractor.extract(
+                    cv_image(self.absolute_path(image.path)),
+                    max_features=_MAX_FEATURES_PER_IMAGE)
+                for feature in features:
+                    session.add(db.Feature(
+                        image=image,
+                        x=feature['x'],
+                        y=feature['y'],
+                        angle=feature['angle'],
+                        size=feature['size'],
+                        descriptor=feature['descriptor'].tobytes()))
+                image.features_indexed = True
+
     def __iter__(self):
         return image_files(self.path)
         # image_files = expand_image_file_list(self.path, catch_errors=True)
         # return iter()
-
-
 
     @property
     def path(self):
@@ -91,6 +114,3 @@ class Dataset(Iterable):
 
     def absolute_path(self, path):
         return (self.path / Path(path)).absolute()
-
-
-

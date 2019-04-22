@@ -1,8 +1,9 @@
 from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import (Column, ForeignKey, Integer, Float, String, Unicode,
-                        LargeBinary, create_engine)
+from sqlalchemy import (Boolean, Column, ForeignKey, Integer, Float, String,
+                        Unicode, LargeBinary, create_engine)
+from sqlalchemy.sql import exists
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker, backref
@@ -10,7 +11,8 @@ from sqlalchemy.orm import relationship, sessionmaker, backref
 from .common import Singleton
 
 __all__ = ['KeyValue', 'Image', 'Feature', 'Word', 'BagOfWords',
-           'Keyword', 'KeywordMatch', 'Database', 'init_database', 'connect']
+           'Keyword', 'KeywordMatch', 'Database',
+           'init', 'connect', 'session', 'session_scope', 'exists']
 
 _DATABASE_NAME = 'dataset.sql'
 
@@ -32,18 +34,21 @@ class Image(_Base):
     height = Column(Integer, nullable=False)
     norm_width = Column(Integer, nullable=False)
     norm_height = Column(Integer, nullable=False)
+    features_indexed = Column(Integer, nullable=False, default=False)
+    words_indexed = Column(Integer, nullable=False, default=False)
+    keywords_indexed = Column(Integer, nullable=False, default=False)
 
 
 class Feature(_Base):
     __tablename__ = 'feature'
     id = Column(Integer, primary_key=True)
+    image_id = Column(Integer, ForeignKey('image.id'), nullable=False)
+    image = relationship(
+        'Image', backref=backref('features', cascade='all, delete-orphan'))
     x = Column(Float, nullable=False)
     y = Column(Float, nullable=False)
     angle = Column(Float, nullable=False)
     size = Column(Integer, nullable=False)
-    image_id = Column(Integer, ForeignKey('image.id'), nullable=False)
-    image = relationship(
-        'Image', backref=backref('features', cascade='all, delete-orphan'))
     descriptor = Column(LargeBinary())
 
 
@@ -117,13 +122,17 @@ class Database(metaclass=Singleton):
         return self._session
 
 
-def init_database(path):
+def init(path):
     db = Database(path)
     _Base.metadata.create_all(db.engine)
 
 
 def connect(path):
     Database(path)
+
+
+def session():
+    return Database().session()
 
 
 @contextmanager
