@@ -5,10 +5,10 @@ import warnings
 
 import progressbar
 
-from phos.common import ImageReadError, expand_image_file_list
+from phos.common import ImageReadError, ImageReadWarning, image_files
 from phos.features import FeatureExtractorID
 from phos.wordlist import WordlistGenerator, save_wordlist
-from phos.dataset import init_dataset, find_dataset
+from phos.dataset import init_dataset, find_dataset, Dataset
 
 
 class CommandLineError(Exception):
@@ -218,8 +218,12 @@ def _new_wordlist(args):
     # index files
     if args.progress:
         print(f"Indexing files...", file=sys.stderr, flush=True)
-    images = expand_image_file_list(args.image, catch_errors=True)
-    if args.max_images is not None and len(images) > args.max_images:
+    with warnings.catch_warnings(record=True) as w:
+        images = list(image_files(args.image))
+        for warning in w:
+            if isinstance(warning.catagory, ImageReadWarning):
+                print(warning.message, file=sys.stderr)
+    if args.max_images and len(images) > args.max_images:
         images = random.sample(images, args.max_images)
 
     # extract features from images
@@ -267,11 +271,7 @@ def _create_parser():
 
 def main():
     try:
-        warnings.filterwarnings(
-            "ignore", "(Possibly )?corrupt EXIF data", UserWarning)
         args = _create_parser().parse_args()
-        # print(args)
-        # print('')
         try:
             if args.command == 'init':
                 _init(args)

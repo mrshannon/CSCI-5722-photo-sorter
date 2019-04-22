@@ -1,6 +1,6 @@
 import mimetypes
 import os
-import sys
+import warnings
 
 import cv2 as cv
 import math
@@ -8,8 +8,7 @@ import numpy as np
 from PIL import Image
 
 __all__ = ['Singleton', 'cv_image', 'pil_image', 'resize_mp',
-           'is_image_file', 'list_files', 'expand_file_list',
-           'expand_image_file_list']
+           'is_image', 'is_thumbnail',  'files', 'image_files']
 
 
 class Singleton(type):
@@ -24,6 +23,10 @@ class Singleton(type):
 
 
 class ImageReadError(Exception):
+    pass
+
+
+class ImageReadWarning(Warning):
     pass
 
 
@@ -211,7 +214,7 @@ def flatten(list_of_lists):
     return [item for sublist in list_of_lists for item in sublist]
 
 
-def is_image_file(file):
+def is_image(file):
     _supported_image_mimetypes = {
         'image/bmp',
         'image/x-windows-bmp',
@@ -234,46 +237,38 @@ def is_image_file(file):
     return mimetypes.guess_type(file)[0] in _supported_image_mimetypes
 
 
-def is_thumbnail_file(file):
-    if not is_image_file(file):
+def is_thumbnail(file):
+    if not is_image(file):
         return False
     with open_image(file) as f:
         size = f.size
         return size[0] * size[1] < 16384
 
 
-def list_files(dir, filter=None):
-    def true(file):
-        return True
-    if filter is None:
-        filter = true
-    return [os.path.join(dir, file)
-            for dir, _, files in os.walk(dir) for file in files
-            if filter(os.path.join(dir, file))]
+def files(paths, filter=None):
+    filter = (lambda _: True) if filter is None else filter
+    if isinstance(paths, (str, bytes, os.PathLike)):
+        # single path
+        for dir, _, files_ in os.walk(paths):
+            for file in files_:
+                fullpath = os.path.join(dir, file)
+                if filter(fullpath):
+                    yield fullpath
+    else:
+        # multiple paths
+        for path in paths:
+            if os.path.isdir(path):
+                yield from files(path, filter)
+            elif filter(path):
+                yield path
 
 
-def expand_file_list(paths, filter=None, *, filter_all=False):
-    def true(path):
-        return True
-    if filter is None:
-        filter = true
-    files = []
-    for path in paths:
-        if os.path.isdir(path):
-            files.extend(list_files(path, filter))
-        elif not filter_all or filter(path):
-            files.append(path)
-    return files
-
-
-def expand_image_file_list(paths, *, catch_errors=False):
+def image_files(paths):
     def filter(file):
-        if catch_errors:
-            try:
-                return is_image_file(file) and not is_thumbnail_file(file)
-            except ImageReadError:
-                print(f"failed to read '{file}', skipping image",
-                      file=sys.stderr)
-                return False
-        return is_image_file(file) and not is_thumbnail_file(file)
-    return expand_file_list(paths, filter, filter_all=True)
+        try:
+            return is_image(file) and not is_thumbnail(file)
+        except ImageReadError:
+            warnings.warn(
+                f"failed to read '{file}', skipping image", ImageReadWarning)
+            return False
+    return files(paths, filter)
