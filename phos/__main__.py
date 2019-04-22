@@ -22,7 +22,7 @@ class ProgressBar(progressbar.ProgressBar):
         self._name = name
 
     @staticmethod
-    def __bar_widgets():
+    def __known_length_widgets():
         widgets = [
             progressbar.Timer('%(elapsed)s'), ' ',
             '(', progressbar.SimpleProgress(), ') ',
@@ -38,18 +38,18 @@ class ProgressBar(progressbar.ProgressBar):
         return widgets
 
     @staticmethod
-    def __bouncing_bar_widgets():
+    def __unknown_length_widgets():
         widgets = [
             progressbar.Timer('%(elapsed)s'), ' ',
             '(', progressbar.Counter(), ') ',
-            progressbar.BouncingBar(marker='◼', left='[', right=']')
+            progressbar.AnimatedMarker()
         ]
         return widgets
 
     def __default_widgets(self):
         if self.max_value:
-            return self.__bar_widgets()
-        return self.__bouncing_bar_widgets()
+            return self.__known_length_widgets()
+        return self.__unknown_length_widgets()
 
     def default_widgets(self):
         if self._name:
@@ -59,7 +59,6 @@ class ProgressBar(progressbar.ProgressBar):
 
 def _progress(progress=False, name=None):
     if progress:
-        # return progressbar.progressbar
         return ProgressBar(name=name)
     return lambda x: x
 
@@ -111,8 +110,19 @@ def _index_parser(subparsers):
         'index', help='index/reindex the images in the dataset')
     parser.add_argument(
         '-p', '--progress', action='store_true', help='show progress bar')
-    parser.add_argument(
-        '-v', '--verbose', action='store_true', help='enable verbose output')
+    # parser.add_argument(
+    #     '-v', '--verbose', action='store_true', help='enable verbose output')
+
+
+def _index(args):
+    dataset = Dataset()
+    with warnings.catch_warnings(record=True) as w:
+        dataset.index(
+            search_progress=_progress(args.progress, 'Searching for images'),
+            index_progress=_progress(args.progress, 'Adding images'))
+        for warning in w:
+            if warning.category is ImageReadWarning:
+                print(warning.message, file=sys.stderr)
 
 
 def _cluster_parser(subparsers):
@@ -221,7 +231,7 @@ def _new_wordlist(args):
     with warnings.catch_warnings(record=True) as w:
         images = list(image_files(args.image))
         for warning in w:
-            if isinstance(warning.catagory, ImageReadWarning):
+            if isinstance(warning.category, ImageReadWarning):
                 print(warning.message, file=sys.stderr)
     if args.max_images and len(images) > args.max_images:
         images = random.sample(images, args.max_images)
@@ -275,6 +285,8 @@ def main():
         try:
             if args.command == 'init':
                 _init(args)
+            if args.command == 'index':
+                _index(args)
             if args.command == 'new-wordlist':
                 _new_wordlist(args)
         except (CommandLineError, RuntimeError) as err:

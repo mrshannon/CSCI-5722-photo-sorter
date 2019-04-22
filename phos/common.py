@@ -296,3 +296,7 @@ def image_files(paths):
                 f"failed to read '{file}', skipping image", ImageReadWarning)
             return False
     return files(paths, filter)
+
+
+def get_progress(progress):
+    return (lambda x: x) if progress is None else progress
