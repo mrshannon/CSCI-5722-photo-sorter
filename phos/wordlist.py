@@ -24,13 +24,9 @@ class WordlistGenerator:
     def add_image(self, image):
         features = self._feature_extractor.extract(
             image, max_features=self._max_features_per_file)
-        if np.any(np.isnan(features['descriptor'])):
-            import ipdb; ipdb.set_trace()
         self._descriptors.append(features['descriptor'])
 
     def descriptors(self, max_features=None):
-        import time
-        t = time.time()
         self._pack_descriptors()
         if (max_features is not None and
                 self._descriptors[0].shape[0] > max_features):
