@@ -28,8 +28,10 @@ class Image(_Base):
     __tablename__ = 'image'
     id = Column(Integer, primary_key=True)
     path = Column(Unicode(256), nullable=False, index=True)
-    width = Column(Integer)
-    height = Column(Integer)
+    width = Column(Integer, nullable=False)
+    height = Column(Integer, nullable=False)
+    norm_width = Column(Integer, nullable=False)
+    norm_height = Column(Integer, nullable=False)
 
 
 class Feature(_Base):

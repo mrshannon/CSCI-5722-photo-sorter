@@ -4,7 +4,7 @@ from enum import IntEnum
 import cv2 as cv
 import numpy as np
 
-from .common import cv_image, resize_mp
+from .common import cv_image, newsize_mp, resize_mp
 
 __all__ = ['FeatureExtractorID', 'FeatureExtractor',
            'SURFExtractor', 'LABSURFExtractor',
@@ -34,6 +34,9 @@ class FeatureExtractor(ABC):
     @abstractmethod
     def id(self):
         """Extractor ID from the :class:`FeatureExtractorID` enum."""
+
+    def norm_size(self, width, height):
+        return newsize_mp(width, height, 1)
 
     def extract(self, image, *, max_features=None, bgr=False):
         """Extract keypoints and descriptors from given image.
