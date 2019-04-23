@@ -2,6 +2,7 @@ from collections.abc import Iterable
 from itertools import chain
 from pathlib import Path
 import random
+import hashlib
 
 import numpy as np
 
@@ -53,6 +54,10 @@ class Dataset(Iterable):
             extractor_id = int(session.query(db.KeyValue.value).filter(
                 db.KeyValue.key == 'method').first()[0])
             self._feature_extractor = create_feature_extractor(extractor_id)
+
+    @property
+    def id(self):
+        return self._feature_extractor.id
 
     def _add_images(self, images, *, progress):
         with db.session_scope() as session:
@@ -121,6 +126,23 @@ class Dataset(Iterable):
             np.frombuffer(des[0], dtype=np.float32) for des in descriptors]
         return WordlistGenerator(
             descriptors, method_id=self._feature_extractor.id)
+
+    @staticmethod
+    def set_wordlist(words):
+        with db.session_scope() as session:
+            # remove invalid data
+            session.query(db.Image).update(
+                {'words_indexed': False, 'keywords_indexed': False})
+            session.query(db.Word).delete()
+            session.query(db.BagOfWords).delete()
+            session.query(db.Keyword).delete()
+            session.query(db.KeywordMatch).delete()
+            # set wordlist
+            wordlist_hash = hashlib.sha1(words.tobytes()).hexdigest()
+            session.add(db.KeyValue(key='wordlist_hash', value=wordlist_hash))
+            for word in words:
+                print(word.shape)
+                session.add(db.Word(descriptor=word.tobytes()))
 
     def __iter__(self):
         return image_files(self.path)

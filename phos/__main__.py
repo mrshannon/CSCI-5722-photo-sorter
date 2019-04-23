@@ -7,7 +7,7 @@ import progressbar
 
 from phos.common import ImageReadError, ImageReadWarning, image_files
 from phos.features import FeatureExtractorID
-from phos.wordlist import WordlistGenerator, save_wordlist
+from phos.wordlist import WordlistGenerator, save_wordlist, load_wordlist
 from phos.dataset import init_dataset, find_dataset, Dataset
 
 
@@ -222,6 +222,31 @@ def _new_wordlist(args):
     save_wordlist(args.file, words, generator.method_id)
 
 
+def _set_wordlist_parser(subparsers):
+    parser = subparsers.add_parser(
+        'set-wordlist',
+        help='set the wordlist for the dataset from a file')
+    parser.add_argument('file', type=str, help='wordlist file to use')
+    parser.add_argument(
+        '--yes', action='store_true', help="don't ask to confirm")
+
+
+def _set_wordlist(args):
+    if not args.yes:
+        print('This will cause bags of words and keyword matches to be '
+              'deleted, you will need need to re-index the dataset '
+              'afterwards.')
+        if input('Do you wish to proceed (yes/NO): ').lower() != 'yes':
+            return
+    method_id, words = load_wordlist(args.file)
+    dataset = Dataset()
+    if dataset.id != method_id:
+        raise CommandLineError(
+            f"dataset has method 'id' {dataset.id} but wordlist was built "
+            "with method 'id' {method_id}")
+    dataset.set_wordlist(words)
+
+
 def _create_parser():
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers()
@@ -235,6 +260,7 @@ def _create_parser():
     _keywords_parser(subparsers)
     _new_keyword_parser(subparsers)
     _new_wordlist_parser(subparsers)
+    _set_wordlist_parser(subparsers)
     return parser
 
 
@@ -248,6 +274,8 @@ def main():
                 _index(args)
             if args.command == 'new-wordlist':
                 _new_wordlist(args)
+            if args.command == 'set-wordlist':
+                _set_wordlist(args)
         except (CommandLineError, RuntimeError) as err:
             print('\n' + str(err) + ', exiting', file=sys.stderr)
             sys.exit(1)
