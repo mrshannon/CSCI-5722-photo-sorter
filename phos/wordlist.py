@@ -8,14 +8,14 @@ __all__ = ['WordlistGenerator', 'save_wordlist', 'load_wordlist']
 
 class WordlistGenerator:
 
-    def __init__(self, images=[], *,
+    def __init__(self, descriptors=None, *,
                  max_features_per_image=None, method_id=None):
         self._method_id = method_id
         self._feature_extractor = create_feature_extractor(method_id)
         self._max_features_per_file = max_features_per_image
         self._descriptors = []
-        for image in images:
-            self.add_image(image)
+        if descriptors is not None:
+            self._descriptors = list(descriptors)
 
     @property
     def method_id(self):
@@ -35,6 +35,12 @@ class WordlistGenerator:
                 size=max_features, replace=False)
             return self._descriptors[0][idx, :]
         return self._descriptors[0]
+
+    def num_descriptors(self):
+        self._pack_descriptors()
+        if not self._descriptors:
+            return 0
+        return self._descriptors[0].shape[0]
 
     def generate(self, size, *, max_features=None, minibatch=True):
         if minibatch:

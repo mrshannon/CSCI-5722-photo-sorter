@@ -110,8 +110,6 @@ def _index_parser(subparsers):
         'index', help='index/reindex the images in the dataset')
     parser.add_argument(
         '-p', '--progress', action='store_true', help='show progress bar')
-    # parser.add_argument(
-    #     '-v', '--verbose', action='store_true', help='enable verbose output')
 
 
 def _index(args):
@@ -125,6 +123,7 @@ def _index(args):
                 print(warning.message, file=sys.stderr)
     dataset.index_features(
         progress=_progress(args.progress, 'Extracting features'))
+
 
 def _cluster_parser(subparsers):
     parser = subparsers.add_parser(
@@ -191,76 +190,35 @@ def _new_wordlist_parser(subparsers):
         'new-wordlist',
         help='create a new wordlist file from a group of images')
     parser.add_argument(
-        'image', metavar='IMAGE', type=str, nargs='+',
-        help=('images and/or directories of images to use to generate '
-              'the wordlist'))
+        'words', metavar='N', type=int, help='number of words to generate')
+    parser.add_argument('file', type=str, help='name of new wordlist file')
     parser.add_argument(
-        '-f', '--file', type=str, default='wordlist',
-        help='name of new wordlist file, default: wordlist')
-    parser.add_argument(
-        '-n', '--size', metavar='N', type=int, default=1000,
-        help='number of visual words to generate, default: 1000')
-    parser.add_argument(
-        '--max-images', metavar='N', type=int, default=None,
-        help=('maximum number of files to use, if more are given the images '
-              'used will be chosen at random, default: use all'))
-    parser.add_argument(
-        '--max-features', metavar='N', type=int, default=None,
+        '--features', metavar='N', type=int, default=None,
         help=('maximum number of features to use when building the wordlist, '
               'default: use all'))
     parser.add_argument(
-        '--max-features-per-image', metavar='N', type=int, default=None,
-        help='maximum number of features to use per image, default: use all')
-    parser.add_argument(
-        '--method', type=_method_id, default=None,
-        help=('set the feature extraction method to use: SURF64, SURF128, '
-              'LABSURF96 (default), or LABSURF160'))
-    parser.add_argument(
-        '--slow', action='store_true',
+        '--kmeans', action='store_true',
         help='use regular k-means instead of the faster (mini-batch) k-means')
     parser.add_argument(
-        '-p', '--progress', action='store_true',
-        help='show progress bar, incompatible with --verbose flag')
-    parser.add_argument(
-        '-v', '--verbose', action='store_true', help='enable verbose output')
+        '-p', '--progress', action='store_true', help='show progress bar')
 
 
 def _new_wordlist(args):
-    # index files
+    if args.features and args.features < args.words:
+        raise CommandLineError(
+            "'--features' must be greater than the number of 'words'")
+    dataset = Dataset()
     if args.progress:
-        print(f"Indexing files...", file=sys.stderr, flush=True)
-    with warnings.catch_warnings(record=True) as w:
-        images = list(image_files(args.image))
-        for warning in w:
-            if isinstance(warning.category, ImageReadWarning):
-                print(warning.message, file=sys.stderr)
-    if args.max_images and len(images) > args.max_images:
-        images = random.sample(images, args.max_images)
-
-    # extract features from images
-    generator = WordlistGenerator(
-        max_features_per_image=args.max_features_per_image,
-        method_id=args.method)
-    if not images:
-        raise CommandLineError('no images to build wordlist from')
-    for image in _progress(args.progress, 'Extracting features')(images):
-        if args.verbose:
-            print(image, flush=True)
-        try:
-            generator.add_image(image)
-        except ImageReadError:
-            print(f"failed to read '{image}', skipping image",
-                  file=sys.stderr, flush=True)
-
-    # generate wordlist with kmeans
-    num_features = args.max_features if args.max_features \
-        else generator.descriptors().shape[0]
+        print('Loading features...', file=sys.stderr, flush=True)
+    generator = dataset.wordlist_generator(max_features=args.features)
     if args.progress:
-        print(f'Using K-Means to generate wordlist from {num_features} '
-              'features...',
+        cluster_method = 'K-Means' if args.kmeans else 'Mini Batch K-Means'
+        print(f'Using {cluster_method} to generate wordlist from '
+              f'{generator.num_descriptors()} features...',
               file=sys.stderr, flush=True)
-    words = generator.generate(
-        args.size, max_features=args.max_features, minibatch=(not args.slow))
+    words = generator.generate(args.words, minibatch=(not args.kmeans))
+    if args.progress:
+        print('Wordlist complete!', file=sys.stderr, flush=True)
     save_wordlist(args.file, words, generator.method_id)
 
 

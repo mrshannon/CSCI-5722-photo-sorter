@@ -1,10 +1,14 @@
 from collections.abc import Iterable
 from itertools import chain
 from pathlib import Path
+import random
+
+import numpy as np
 
 import phos.database as db
 from .common import image_size, image_files, flatten, get_progress, cv_image
 from .features import create_feature_extractor
+from .wordlist import WordlistGenerator
 
 # from .image import Image
 
@@ -99,6 +103,24 @@ class Dataset(Iterable):
                         size=feature['size'],
                         descriptor=feature['descriptor'].tobytes()))
                 image.features_indexed = True
+
+    def wordlist_generator(self, *, max_features=None):
+        if max_features:
+            with db.session_scope() as session:
+                ids = flatten(session.query(db.Feature.id).all())
+                try:
+                    ids = set(random.sample(ids, max_features))
+                except ValueError:
+                    return self.wordlist_generator()
+                descriptors = session.query(db.Feature.descriptor).filter(
+                    db.Feature.id.in_(ids)).all()
+        else:
+            with db.session_scope() as session:
+                descriptors = session.query(db.Feature.descriptor).all()
+        descriptors = [
+            np.frombuffer(des[0], dtype=np.float32) for des in descriptors]
+        return WordlistGenerator(
+            descriptors, method_id=self._feature_extractor.id)
 
     def __iter__(self):
         return image_files(self.path)
