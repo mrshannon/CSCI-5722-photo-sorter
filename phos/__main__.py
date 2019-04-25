@@ -148,7 +148,39 @@ def _cluster_parser(subparsers):
         help=('rearrange similar images into folders and duplicates into '
               'subfolders, this operation is slow'))
     parser.add_argument(
+        '-c', '--cohesion', type=float, default=2.0,
+        help=('priority whole images are given over their parts, valid values '
+              'are 0.0 to 100.0 with the latter only clustering based on the '
+              'whole image, a value of 2.0 is considered balanced, '
+              'default 2.0'))
+    parser.add_argument(
+        '-a', '--affinity', type=float, default=0.1,
+        help=('affinity towards a single cluster, valid range is 0.01 (many '
+              'clusters) to 2.0 (force a single cluster), default: 0.1'))
+    parser.add_argument(
+        '-g', '--global-only', action='store_true',
+        help=('disable clustering based on sections of images and only use the'
+              'entire scene'))
+    parser.add_argument(
         '-p', '--progress', action='store_true', help='show progress bar')
+
+
+def _cluster(args):
+    dataset = Dataset()
+    if args.progress:
+        _print('Loading Bags of Visual Words...')
+    clusterere = dataset.create_clusterer(
+        global_only=args.global_only, image_cohesion_factor=args.cohesion)
+    if args.progress:
+        _print('Using K-Means to cluster images...')
+    cluster_mapping = clusterere.cluster(
+        affinity=args.affinity,
+        progress_printer=_print if args.progress else None)
+    if args.progress:
+        _print('Rearranging images into clusters...')
+    dataset.cluster(cluster_mapping)
+    if args.progress:
+        _print('Clustering complete!...')
 
 
 def _similar_parser(subparsers):
@@ -295,6 +327,8 @@ def main():
                 _init(args)
             if args.command == 'index':
                 _index(args)
+            if args.command == 'cluster':
+                _cluster(args)
             if args.command == 'new-wordlist':
                 _new_wordlist(args)
             if args.command == 'set-wordlist':

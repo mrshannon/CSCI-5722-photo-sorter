@@ -1,11 +1,12 @@
 import hashlib
+from functools import partial
 from itertools import chain
 from pathlib import Path
-from functools import partial
 
 import numpy as np
 
 import phos.database as db
+from .cluster import Clusterer
 from .common import RTree, files, image_files, flatten, get_progress, cv_image
 from .features import (feature_name, feature_descriptor_size,
                        read_features_header, load_features,
@@ -82,6 +83,7 @@ class Dataset:
     def _remove_orphaned_features(self, fs_images):
         def filter_(path):
             return str(path).endswith(_FEATURE_EXTENSION)
+
         orphans = []
         images = set(path.with_suffix('') for path in fs_images)
         for file in files(self.path, filter=filter_):
@@ -104,7 +106,7 @@ class Dataset:
     def _get_feature_files(self):
         with db.session_scope() as session:
             return [self._get_feature_file(path[0])
-                for path in session.query(db.Image.path).all()]
+                    for path in session.query(db.Image.path).all()]
 
     def _get_wordlist_rtree(self):
         words = self.get_wordlist()
@@ -125,18 +127,19 @@ class Dataset:
                         width, height, divisions, i, j):
         if i >= divisions or j >= divisions:
             raise ValueError("Both 'i' and 'j' must be less than 'divisions'.")
-        dx = width/divisions
-        dy = height/divisions
-        idx = list(feature_tree.intersection((dx*i, dy*j, dx*(i+1), dy*(j+1))))
+        dx = width / divisions
+        dy = height / divisions
+        idx = list(feature_tree.intersection((dx * i, dy * j, dx * (i + 1), dy * (j + 1))))
         return np.bincount(feature_words[idx], minlength=num_words)
 
     @staticmethod
-    def _create_bag_of_words(hist_fun, image, divisions, row, column):
+    def _insert_bag_of_words(session, hist_fun, image, divisions, row, column):
         hist = hist_fun(divisions, row, column).astype(np.float32)
-        hist = hist/hist.max()
-        return db.BagOfWords(
-            image=image, divisions=divisions, row=row, column=column,
-            word_histogram=hist.tobytes())
+        if hist.max() > 0:
+            hist = hist / hist.max()
+            session.add(db.BagOfWords(
+                image=image, divisions=divisions, row=row, column=column,
+                word_histogram=hist.tobytes()))
 
     def _create_bag_of_words_for_image(self, image_id, size, wordlist):
         with db.session_scope() as session:
@@ -154,19 +157,29 @@ class Dataset:
             word_histogram = partial(
                 self._word_histogram, size, words, feature_tree, width, height)
             # total image
-            session.add(self._create_bag_of_words(
-                word_histogram, image, 1, 0, 0))
+            self._insert_bag_of_words(session, word_histogram, image, 1, 0, 0)
             # rule of 3rds
             for i in range(3):
                 for j in range(3):
-                    session.add(self._create_bag_of_words(
-                        word_histogram, image, 3, i, j))
+                    self._insert_bag_of_words(
+                        session, word_histogram, image, 3, i, j)
             # rule of 5ths
             for i in range(5):
                 for j in range(5):
-                    session.add(self._create_bag_of_words(
-                        word_histogram, image, 5, i, j))
+                    self._insert_bag_of_words(
+                        session, word_histogram, image, 5, i, j)
             image.has_words = True
+
+    def _move_image_into(self, image_id, dest_dir):
+        dest_dir = self.absolute_path(dest_dir)
+        with db.session_scope() as session:
+            image = session.query(db.Image).get(image_id)
+            image_path = self.absolute_path(image.path)
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            image_path.rename(dest_dir / image_path.name)
+            self._get_feature_file(image_path).rename(
+                self._get_feature_file(dest_dir / image_path.name))
+            image.path = str(self.relative_path(dest_dir / image_path.name))
 
     def index_images(self, *, progress=None):
         added = []
@@ -209,12 +222,42 @@ class Dataset:
             self._create_bag_of_words_for_image(id, num_words, wordlist)
 
     @staticmethod
+    def create_clusterer(*, global_only=False, image_cohesion_factor=2):
+        if image_cohesion_factor < 0:
+            raise ValueError("'image_cohesion_factor' cannot be less than 0")
+        clusterere = Clusterer()
+        with db.session_scope() as session:
+            for bags_of_words in session.query(db.BagOfWords):
+                if global_only and bags_of_words.divisions > 1:
+                    continue
+                histogram = np.frombuffer(
+                    bags_of_words.word_histogram, dtype=np.float32)
+                weight = 1 / (bags_of_words.divisions**image_cohesion_factor)
+                clusterere.add_histogram(
+                    bags_of_words.image_id,
+                    histogram, weight=weight)
+        return clusterere
+
+    def cluster(self, cluster_mapping=None):
+        if cluster_mapping is None:
+            cluster_mapping = self.create_clusterer().cluster()
+        for image_id, cluster in cluster_mapping.items():
+            self._move_image_into(
+                image_id, Path('clusters') / Path(str(cluster)))
+        # clean up empty cluster directories
+        if self.absolute_path('clusters').is_dir():
+            for cluster_dir in self.absolute_path('clusters').glob('*'):
+                if (cluster_dir.is_dir() and
+                        len(list(cluster_dir.glob('*'))) == 0):
+                    cluster_dir.rmdir()
+
+    @staticmethod
     def get_wordlist():
         words = {}
         with db.session_scope() as session:
             for word in session.query(db.Word):
                 descriptor = np.frombuffer(word.descriptor, dtype=np.float32)
-                words[word.id-1] = descriptor
+                words[word.id - 1] = descriptor
         return words
 
     def wordlist_generator(self, *, progress=None):
@@ -246,7 +289,7 @@ class Dataset:
             wordlist_hash = hashlib.sha1(words.tobytes()).hexdigest()
             session.add(db.KeyValue(key='wordlist_hash', value=wordlist_hash))
             for id, word in enumerate(words):
-                session.add(db.Word(id=(id+1), descriptor=word.tobytes()))
+                session.add(db.Word(id=(id + 1), descriptor=word.tobytes()))
 
     def relative_path(self, path):
         return Path(path).absolute().relative_to(self.path)
