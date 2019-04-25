@@ -20,6 +20,11 @@ _MAX_FEATURES_PER_IMAGE = 1000
 _FEATURE_EXTENSION = '.fea'
 
 
+def _make_hidden(path):
+    path = Path(path)
+    return path.parent / ('.' + str(path.name))
+
+
 def init_dataset(path, method_id=None):
     path = Path(path).absolute()
     if path.is_dir():
@@ -58,7 +63,7 @@ class Dataset:
             self._feature_extractor = create_feature_extractor(extractor_id)
 
     def _index_image(self, session, path):
-        feature_path = path.with_suffix(_FEATURE_EXTENSION)
+        feature_path = self._get_feature_file(path)
         has_features = (
                 feature_path.is_file() and
                 read_features_header(feature_path)[0] == self.method)
@@ -85,9 +90,11 @@ class Dataset:
             return str(path).endswith(_FEATURE_EXTENSION)
 
         orphans = []
-        images = set(path.with_suffix('') for path in fs_images)
+        # import ipdb; ipdb.set_trace()
+        # images = set(path.with_suffix('') for path in fs_images)
+        feature_files = set(self._get_feature_file(path) for path in fs_images)
         for file in files(self.path, filter=filter_):
-            if ((self.relative_path(file).with_suffix('') not in images) or
+            if ((self.absolute_path(file) not in feature_files) or
                     read_features_header(file)[0] != self.method):
                 try:
                     file.relative_to(Path.cwd())
@@ -101,7 +108,8 @@ class Dataset:
         return orphans
 
     def _get_feature_file(self, image_path):
-        return self.absolute_path(image_path).with_suffix(_FEATURE_EXTENSION)
+        return _make_hidden(
+            self.absolute_path(image_path).with_suffix(_FEATURE_EXTENSION))
 
     def _get_feature_files(self):
         with db.session_scope() as session:
@@ -205,7 +213,7 @@ class Dataset:
                 features = self._feature_extractor.extract(
                     image_data, max_features=_MAX_FEATURES_PER_IMAGE)
                 self._feature_extractor.save_features(
-                    path.with_suffix(_FEATURE_EXTENSION), image_data, features)
+                    self._get_feature_file(path), image_data, features)
                 image.has_features = True
                 new_features.append(image.path)
         return new_features

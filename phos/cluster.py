@@ -17,6 +17,10 @@ class Clusterer:
         if len(self._histograms) > 2:
             self._histograms = [np.vstack(self._histograms)]
 
+    @property
+    def size(self):
+        return len(self._images)
+
     def add_histogram(self, image, histogram, weight=1):
         self._images.append(image)
         self._histograms.append(histogram)

@@ -166,11 +166,15 @@ def _cluster_parser(subparsers):
 
 
 def _cluster(args):
+    _index(args)
     dataset = Dataset()
     if args.progress:
         _print('Loading Bags of Visual Words...')
     clusterere = dataset.create_clusterer(
         global_only=args.global_only, image_cohesion_factor=args.cohesion)
+    if clusterere.size == 0:
+        raise CommandLineError(
+            "missing bags of words, re-run the 'index' command")
     if args.progress:
         _print('Using K-Means to cluster images...')
     cluster_mapping = clusterere.cluster(
@@ -287,18 +291,18 @@ def _set_wordlist_parser(subparsers):
 
 
 def _set_wordlist(args):
-    if not args.yes:
-        print('This will cause bags of words and keyword matches to be '
-              'deleted, you will need need to re-index the dataset '
-              'afterwards.')
-        if input('Do you wish to proceed (yes/NO): ').lower() != 'yes':
-            return
     method, words = load_wordlist(args.file)
     dataset = Dataset()
     if dataset.method != method:
         raise CommandLineError(
             f"dataset has method '{feature_name(dataset.method)}' but "
             f"wordlist was built with method '{feature_name(method)}'")
+    if not args.yes:
+        print('This will cause bags of words and keyword matches to be '
+              'deleted, you will need need to re-index the dataset '
+              'afterwards.')
+        if input('Do you wish to proceed (yes/NO): ').lower() != 'yes':
+            return
     dataset.set_wordlist(words)
 
 
