@@ -10,7 +10,7 @@ import math
 import numpy as np
 from PIL import Image
 
-__all__ = ['RTree', 'Singleton', 'open_image', 'image_size',
+__all__ = ['RTree', 'Singleton', 'open_image', 'image_size', 'get_progress',
            'cv_image', 'pil_image', 'newsize_mp', 'resize_mp', 'flatten',
            'is_image', 'is_thumbnail', 'files', 'image_files']
 

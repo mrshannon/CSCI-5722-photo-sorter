@@ -10,7 +10,7 @@ __all__ = ['FeatureExtractorID', 'FeatureExtractor',
            'SURFExtractor', 'LABSURFExtractor',
            'feature_name', 'feature_descriptor_size', 'feature_dtype',
            'read_features_header', 'load_features',
-           'extract_keypoint', 'create_feature_extractor']
+           'extract_keypoint', 'create_feature_extractor', 'feature_rtree']
 
 
 class FeatureExtractorID(IntEnum):

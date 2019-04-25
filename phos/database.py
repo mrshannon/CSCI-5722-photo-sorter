@@ -46,7 +46,7 @@ class BagOfWords(_Base):
     id = Column(Integer, primary_key=True)
     image_id = Column(Integer, ForeignKey('image.id'), nullable=False)
     image = relationship(
-        'Image', backref=backref('words', cascade='all, delete-orphan'))
+        'Image', backref=backref('words', cascade='all, delete'))
     divisions = Column(Integer, nullable=False)
     row = Column(Integer, nullable=False)
     column = Column(Integer, nullable=False)

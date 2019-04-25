@@ -75,8 +75,8 @@ class Dataset:
         fs_images = set(str(path) for path in fs_images)
         db_images = set(flatten(session.query(db.Image.path).all()))
         removed = db_images.difference(fs_images)
-        session.execute(
-            db.Image.__table__.delete().where(db.Image.path.in_(removed)))
+        for image in session.query(db.Image).filter(db.Image.path.in_(removed)):
+            session.delete(image)
         return list(removed)
 
     def _remove_orphaned_features(self, fs_images):

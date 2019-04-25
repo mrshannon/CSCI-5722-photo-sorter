@@ -128,7 +128,7 @@ def _index(args):
             if added:
                 message += f'{len(added)} new images'
             if removed:
-                message += ' (removed {len(removed)})'
+                message += f' (removed {len(removed)})'
             if orphaned:
                 message += f', {len(orphaned)} orphaned feature files removed'
             if message:
