@@ -3,14 +3,28 @@ import os
 import warnings
 from pathlib import Path
 
+import rtree
+
 import cv2 as cv
 import math
 import numpy as np
 from PIL import Image
 
-__all__ = ['Singleton', 'open_image', 'image_size', 'cv_image', 'pil_image',
-           'newsize_mp', 'resize_mp', 'flatten', 'is_image', 'is_thumbnail',
-           'files', 'image_files']
+__all__ = ['RTree', 'Singleton', 'open_image', 'image_size',
+           'cv_image', 'pil_image', 'newsize_mp', 'resize_mp', 'flatten',
+           'is_image', 'is_thumbnail', 'files', 'image_files']
+
+
+def RTree(dimensions, *, filename=None):
+    properties = rtree.index.Property()
+    properties.dimension = dimensions
+    if filename:
+        properties.filename = filename
+        properties.storage = rtree.index.RT_Disk
+        properties.pagesize = 64*dimensions
+    else:
+        properties.storage = rtree.index.RT_Memory
+    return rtree.index.Index(properties=properties)
 
 
 class Singleton(type):
@@ -298,5 +312,5 @@ def image_files(paths):
     return files(paths, filter)
 
 
-def get_progress(progress):
-    return (lambda x: x) if progress is None else progress
+def get_progress(progress, max_value=None):
+    return (lambda x: x) if progress is None else progress(max_value=max_value)

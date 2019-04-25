@@ -4,10 +4,12 @@ from enum import IntEnum
 import cv2 as cv
 import numpy as np
 
-from .common import cv_image, newsize_mp, resize_mp
+from .common import cv_image, newsize_mp, resize_mp, image_size, RTree
 
 __all__ = ['FeatureExtractorID', 'FeatureExtractor',
            'SURFExtractor', 'LABSURFExtractor',
+           'feature_name', 'feature_descriptor_size', 'feature_dtype',
+           'read_features_header', 'load_features',
            'extract_keypoint', 'create_feature_extractor']
 
 
@@ -29,45 +31,6 @@ _common_feature_fields = [
 class FeatureExtractor(ABC):
 
     # must define _feature_dtype in subclass
-
-    @property
-    @abstractmethod
-    def id(self):
-        """Extractor ID from the :class:`FeatureExtractorID` enum."""
-
-    def norm_size(self, width, height):
-        return newsize_mp(width, height, 1)
-
-    def extract(self, image, *, max_features=None, bgr=False):
-        """Extract keypoints and descriptors from given image.
-
-        Parameters
-        ----------
-        image
-            Any type of image that :func:`cv_image` can accept, including the
-            path to an image file.
-        max_features : int
-            Maximum number of features to extract from the image.
-
-        Returns
-        -------
-        ndarray
-            Structured numpy array with the following fields:
-
-                * x: float32
-                * y: float32
-                * angle: float32
-                * size: uint16
-                * descriptor: float32 x [96 or 160]
-
-        """
-        if not bgr:
-            image = cv_image(image)
-        return self._extract(resize_mp(image, 1), max_features=max_features)
-
-    @abstractmethod
-    def _extract(self, image, max_features=None):
-        pass
 
     @staticmethod
     def _pack_results(dtype, keypoints, descriptors):
@@ -103,6 +66,53 @@ class FeatureExtractor(ABC):
             result['angle'] = keypoint.angle
             result['size'] = int(keypoint.size)
         return results
+
+    @abstractmethod
+    def _extract(self, image, max_features=None):
+        pass
+
+    def extract(self, image, *, max_features=None, bgr=False):
+        """Extract keypoints and descriptors from given image.
+
+        Parameters
+        ----------
+        image
+            Any type of image that :func:`cv_image` can accept, including the
+            path to an image file.
+        max_features : int
+            Maximum number of features to extract from the image.
+
+        Returns
+        -------
+        ndarray
+            Structured numpy array with the following fields:
+
+                * x: float32
+                * y: float32
+                * angle: float32
+                * size: uint16
+                * descriptor: float32 x [96 or 160]
+
+        """
+        if not bgr:
+            image = cv_image(image)
+        return self._extract(resize_mp(image, 1), max_features=max_features)
+
+    def save_features(self, file, image, features):
+        width, height = self.norm_size(*image_size(image))
+        header = np.array(
+            [int(self.id), width, height, len(features)], dtype=np.uint16)
+        with open(file, 'wb') as f:
+            f.write(header.tobytes())
+            f.write(features.tobytes())
+
+    def norm_size(self, width, height):
+        return newsize_mp(width, height, 1)
+
+    @property
+    @abstractmethod
+    def id(self):
+        """Extractor ID from the :class:`FeatureExtractorID` enum."""
 
 
 class SURFExtractor(FeatureExtractor):
@@ -285,6 +295,48 @@ class LABSURFExtractor(SURFExtractor):
         return descriptor
 
 
+def feature_name(id):
+    name = {
+        FeatureExtractorID.SURF64: 'SURF64',
+        FeatureExtractorID.SURF128: 'SURF128',
+        FeatureExtractorID.LABSURF96: 'LABSURF96',
+        FeatureExtractorID.LABSURF160: 'LABSURF160'}
+    return name[id]
+
+
+def feature_descriptor_size(id):
+    descriptor_size = {
+        FeatureExtractorID.SURF64: 64,
+        FeatureExtractorID.SURF128: 128,
+        FeatureExtractorID.LABSURF96: 96,
+        FeatureExtractorID.LABSURF160: 160}
+    return descriptor_size[id]
+
+
+def feature_dtype(id):
+    return np.dtype([
+        ('x', np.float32),
+        ('y', np.float32),
+        ('angle', np.float32),
+        ('size', np.uint16),
+        ('descriptor', np.float32, (feature_descriptor_size(id),))])
+
+
+def read_features_header(file):
+    with open(file, 'rb') as f:
+        header = np.fromfile(f, dtype=np.uint16, count=4)
+    id = FeatureExtractorID(header[0])
+    return id, header[1], header[2],
+
+
+def load_features(file):
+    with open(file, 'rb') as f:
+        header = np.fromfile(f, dtype=np.uint16, count=4)
+        id = FeatureExtractorID(int(header[0]))
+        features = np.fromfile(f, dtype=feature_dtype(id))
+    return id, header[1], header[2], features
+
+
 def extract_keypoint(image, x, y, angle, size):
     """Extract a keypoint from an image, returning a subimage.
 
@@ -340,3 +392,11 @@ def create_feature_extractor(id=None):
     if id == FeatureExtractorID.LABSURF160:
         return LABSURFExtractor(surf128=True)
     raise ValueError(f"unknown extractor 'id' ({id})")
+
+
+def feature_rtree(features):
+    tree = RTree(2)
+    for idx, feature in enumerate(features):
+        tree.insert(
+            idx, (feature['x'], feature['y'], feature['x'], feature['y']))
+    return tree

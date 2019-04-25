@@ -6,7 +6,7 @@ import warnings
 import progressbar
 
 from phos.common import ImageReadError, ImageReadWarning, image_files
-from phos.features import FeatureExtractorID
+from phos.features import FeatureExtractorID, feature_name
 from phos.wordlist import WordlistGenerator, save_wordlist, load_wordlist
 from phos.dataset import init_dataset, find_dataset, Dataset
 
@@ -58,9 +58,15 @@ class ProgressBar(progressbar.ProgressBar):
 
 
 def _progress(progress=False, name=None):
-    if progress:
-        return ProgressBar(name=name)
-    return lambda x: x
+    def internal(max_value=None):
+        if progress:
+            return ProgressBar(name=name, max_value=max_value)
+        return lambda x: x
+    return internal
+
+
+def _print(message):
+    print(message, file=sys.stderr, flush=True)
 
 
 def _method_id(name):
@@ -115,14 +121,25 @@ def _index_parser(subparsers):
 def _index(args):
     dataset = Dataset()
     with warnings.catch_warnings(record=True) as w:
-        dataset.index_images(
-            search_progress=_progress(args.progress, 'Searching for images'),
-            index_progress=_progress(args.progress, 'Adding images'))
+        added, removed, orphaned = dataset.index_images(
+            progress=_progress(args.progress, 'Indexing images'))
+        if args.progress:
+            message = ''
+            if added:
+                message += f'{len(added)} new images'
+            if removed:
+                message += ' (removed {len(removed)})'
+            if orphaned:
+                message += f', {len(orphaned)} orphaned feature files removed'
+            if message:
+                _print(message)
+        dataset.index_features(
+            progress=_progress(args.progress, 'Extracting features'))
         for warning in w:
             if warning.category is ImageReadWarning:
-                print(warning.message, file=sys.stderr)
-    dataset.index_features(
-        progress=_progress(args.progress, 'Extracting features'))
+                _print(warning.message)
+        dataset.index_words(
+            progress=_progress(args.progress, 'Generating Bags of Visual Words'))
 
 
 def _cluster_parser(subparsers):
@@ -208,18 +225,24 @@ def _new_wordlist(args):
         raise CommandLineError(
             "'--features' must be greater than the number of 'words'")
     dataset = Dataset()
-    if args.progress:
-        print('Loading features...', file=sys.stderr, flush=True)
-    generator = dataset.wordlist_generator(max_features=args.features)
+    # if args.progress:
+    #     print('Loading features...', file=sys.stderr, flush=True)
+    try:
+        generator = dataset.wordlist_generator(
+            progress=_progress(args.progress, 'Loading feature files'))
+    except FileNotFoundError:
+        raise CommandLineError(
+            "missing features files, re-run the 'index' command")
     if args.progress:
         cluster_method = 'K-Means' if args.kmeans else 'Mini Batch K-Means'
         print(f'Using {cluster_method} to generate wordlist from '
               f'{generator.num_descriptors()} features...',
               file=sys.stderr, flush=True)
-    words = generator.generate(args.words, minibatch=(not args.kmeans))
+    words = generator.generate(
+        args.words, max_features=args.features, minibatch=(not args.kmeans))
     if args.progress:
         print('Wordlist complete!', file=sys.stderr, flush=True)
-    save_wordlist(args.file, words, generator.method_id)
+    save_wordlist(args.file, words, generator.method)
 
 
 def _set_wordlist_parser(subparsers):
@@ -238,12 +261,12 @@ def _set_wordlist(args):
               'afterwards.')
         if input('Do you wish to proceed (yes/NO): ').lower() != 'yes':
             return
-    method_id, words = load_wordlist(args.file)
+    method, words = load_wordlist(args.file)
     dataset = Dataset()
-    if dataset.id != method_id:
+    if dataset.method != method:
         raise CommandLineError(
-            f"dataset has method 'id' {dataset.id} but wordlist was built "
-            "with method 'id' {method_id}")
+            f"dataset has method '{feature_name(dataset.method)}' but "
+            f"wordlist was built with method '{feature_name(method)}'")
     dataset.set_wordlist(words)
 
 
@@ -277,6 +300,8 @@ def main():
             if args.command == 'set-wordlist':
                 _set_wordlist(args)
         except (CommandLineError, RuntimeError) as err:
+            sys.stderr.flush()
+            sys.stdout.flush()
             print('\n' + str(err) + ', exiting', file=sys.stderr)
             sys.exit(1)
     except KeyboardInterrupt:

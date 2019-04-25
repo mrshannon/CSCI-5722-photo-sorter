@@ -18,13 +18,16 @@ class WordlistGenerator:
             self._descriptors = list(descriptors)
 
     @property
-    def method_id(self):
+    def method(self):
         return self._feature_extractor.id
 
     def add_image(self, image):
         features = self._feature_extractor.extract(
             image, max_features=self._max_features_per_file)
         self._descriptors.append(features['descriptor'])
+
+    def add_descriptors(self, descriptors):
+        self._descriptors.append(descriptors)
 
     def descriptors(self, max_features=None):
         self._pack_descriptors()
@@ -68,6 +71,6 @@ def save_wordlist(file, words, method):
 def load_wordlist(file):
     with open(file, 'rb') as f:
         header = np.fromfile(f, dtype=np.uint16, count=4)
-        method = FeatureExtractorID(header[0])
         words = np.fromfile(f, dtype=np.float32).reshape(header[2], header[1])
-        return method, words
+    method = FeatureExtractorID(header[0])
+    return method, words

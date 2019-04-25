@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import (Boolean, Column, ForeignKey, Integer, Float, String,
+from sqlalchemy import (Column, ForeignKey, Integer, Float, String,
                         Unicode, LargeBinary, create_engine)
 from sqlalchemy.sql import exists
 from sqlalchemy.engine import Engine
@@ -10,8 +10,8 @@ from sqlalchemy.orm import relationship, sessionmaker, backref
 
 from .common import Singleton
 
-__all__ = ['KeyValue', 'Image', 'Feature', 'Word', 'BagOfWords',
-           'Keyword', 'KeywordMatch', 'Database',
+__all__ = ['KeyValue', 'Image', 'Word', 'BagOfWords', 'Keyword',
+           'KeywordMatch', 'Database',
            'init', 'connect', 'session', 'session_scope', 'exists']
 
 _DATABASE_NAME = 'dataset.sql'
@@ -30,26 +30,9 @@ class Image(_Base):
     __tablename__ = 'image'
     id = Column(Integer, primary_key=True)
     path = Column(Unicode(256), nullable=False, index=True)
-    width = Column(Integer, nullable=False)
-    height = Column(Integer, nullable=False)
-    norm_width = Column(Integer, nullable=False)
-    norm_height = Column(Integer, nullable=False)
-    features_indexed = Column(Integer, nullable=False, default=False)
-    words_indexed = Column(Integer, nullable=False, default=False)
-    keywords_indexed = Column(Integer, nullable=False, default=False)
-
-
-class Feature(_Base):
-    __tablename__ = 'feature'
-    id = Column(Integer, primary_key=True)
-    image_id = Column(Integer, ForeignKey('image.id'), nullable=False)
-    image = relationship(
-        'Image', backref=backref('features', cascade='all, delete-orphan'))
-    x = Column(Float, nullable=False)
-    y = Column(Float, nullable=False)
-    angle = Column(Float, nullable=False)
-    size = Column(Integer, nullable=False)
-    descriptor = Column(LargeBinary())
+    has_features = Column(Integer, nullable=False, default=False)
+    has_words = Column(Integer, nullable=False, default=False)
+    has_keywords = Column(Integer, nullable=False, default=False)
 
 
 class Word(_Base):
@@ -64,7 +47,7 @@ class BagOfWords(_Base):
     image_id = Column(Integer, ForeignKey('image.id'), nullable=False)
     image = relationship(
         'Image', backref=backref('words', cascade='all, delete-orphan'))
-    layer = Column(Integer, nullable=False)
+    divisions = Column(Integer, nullable=False)
     row = Column(Integer, nullable=False)
     column = Column(Integer, nullable=False)
     word_histogram = Column(LargeBinary(), nullable=False)
