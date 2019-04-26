@@ -143,7 +143,7 @@ def _index(args):
             progress=_progress(
                 args.progress, 'Generating Bags of Visual Words'))
         dataset.index_keywords(
-            progress=_progress(args.progress, 'Matching images to keywords'))
+            progress=_progress(args.progress, 'Applying keywords to images'))
 
 
 def _cluster_parser(subparsers):
@@ -191,26 +191,22 @@ def _cluster(args):
         _print('Clustering complete!')
 
 
-def _similar_parser(subparsers):
-    parser = subparsers.add_parser(
-        'similar', help='list images similar to the given image')
-    parser.add_argument(
-        'image', metavar='IMAGE', type=str,
-        help='image to list similar images for')
-    parser.add_argument(
-        '-d', '--display', action='store_true',
-        help='display images instead of listing them')
-
-
 def _keyword_parser(subparsers):
     parser = subparsers.add_parser(
         'keyword', help='list images with the given keyword')
     parser.add_argument(
         'keyword', metavar='KEYWORD', type=str,
         help='keyword to list matching images for')
-    parser.add_argument(
-        '-d', '--display', action='store_true',
-        help='display images instead of listing them')
+
+
+def _keyword(args):
+    dataset = Dataset()
+    try:
+        images = dataset.get_images_from_keyword(args.keyword)
+        for image in images:
+            print(image)
+    except ValueError as err:
+        CommandLineError(str(err))
 
 
 def _keywords_parser(subparsers):
@@ -223,6 +219,16 @@ def _keywords_parser(subparsers):
         'image', metavar='IMAGE', type=str, nargs='?', default=None,
         help=('image to list keywords for, leave blank to list all keywords '
               'in dataset with number of images matching each keyword'))
+
+
+def _keywords(args):
+    dataset = Dataset()
+    if args.image:
+        for keyword in dataset.get_keywords_for_image(args.image):
+            print(keyword)
+    else:
+        for keyword, count in dataset.get_keyword_counts().items():
+            print(f'{count:3d} {keyword}')
 
 
 def _new_keyword_parser(subparsers):
@@ -354,7 +360,6 @@ def _create_parser():
     _init_parser(subparsers)
     _index_parser(subparsers)
     _cluster_parser(subparsers)
-    _similar_parser(subparsers)
     _keyword_parser(subparsers)
     _keywords_parser(subparsers)
     _new_keyword_parser(subparsers)
@@ -374,6 +379,10 @@ def main():
                 _index(args)
             if args.command == 'cluster':
                 _cluster(args)
+            if args.command == 'keyword':
+                _keyword(args)
+            if args.command == 'keywords':
+                _keywords(args)
             if args.command == 'new-keyword':
                 _new_keyword(args)
             if args.command == 'set-keywords':

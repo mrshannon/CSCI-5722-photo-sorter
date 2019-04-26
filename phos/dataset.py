@@ -2,6 +2,7 @@ import hashlib
 from functools import partial
 from itertools import chain
 from pathlib import Path
+import operator
 
 import numpy as np
 
@@ -253,12 +254,16 @@ class Dataset:
     def _index_image_keywords(self, image_id, keywords_tree):
         with db.session_scope() as session:
             image = session.query(db.Image).get(image_id)
-            image_keyword_ids = []
+            image_keyword_ids = {}
             for bag_of_words in image.words:
+                divisions = bag_of_words.divisions
                 histogram = np.frombuffer(
                     bag_of_words.word_histogram, dtype=np.float32)
-                image_keyword_ids.extend(
-                    keywords_tree.nearest(np.tile(histogram, 2), 1))
+                for id in keywords_tree.nearest(np.tile(histogram, 2), 1):
+                    image_keyword_ids.setdefault(id, 0)
+                    image_keyword_ids[id] += 1/(divisions**1.8)
+            image_keyword_ids = {
+                k: v for k, v in image_keyword_ids.items() if v >= 1}
             for keyword_id in set(image_keyword_ids):
                 keyword = session.query(db.Keyword).get(keyword_id)
                 session.add(db.KeywordMatch(image=image, keyword=keyword))
@@ -274,6 +279,38 @@ class Dataset:
         keywords_tree = self._get_keywords_rtree()
         for id in get_progress(progress)(image_ids):
             self._index_image_keywords(id, keywords_tree)
+
+    @staticmethod
+    def get_images_from_keyword(keyword):
+        images = []
+        with db.session_scope() as session:
+            keyword = session.query(db.Keyword).filter(
+                db.Keyword.name == keyword).one_or_none()
+            if keyword is None:
+                return ValueError(
+                    f"keyword '{keyword}' is not in this dataset")
+            for match in keyword.images:
+                images.append(match.image.path)
+        return images
+
+    @staticmethod
+    def get_keyword_counts():
+        keywords = {}
+        with db.session_scope() as session:
+            for keyword in session.query(db.Keyword):
+                keywords[keyword.name] = len(keyword.images)
+        return {k: v for (k,v) in
+                sorted(keywords.items(),
+                       key=operator.itemgetter(1), reverse=True)}
+
+    def get_keywords_for_image(self, image):
+        image = self.relative_path(image)
+        with db.session_scope() as session:
+            image = session.query(db.Image).filter(
+                db.Image.path == str(image)).one_or_none()
+            if image:
+                return set([match.keyword.name for match in image.keywords])
+            return set()
 
     @staticmethod
     def create_clusterer(*, global_only=False, image_cohesion_factor=2):
@@ -323,6 +360,7 @@ class Dataset:
             # remove invalid data
             session.query(db.Image).update({'has_keywords': False})
             session.query(db.Keyword).delete()
+            session.query(db.KeywordTheme).delete()
             session.query(db.KeywordMatch).delete()
             # add keywords
             for keyword, data in keywords.items():
