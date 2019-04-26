@@ -1,6 +1,7 @@
 import argparse
 import sys
 import warnings
+from pathlib import Path
 
 import progressbar
 
@@ -108,6 +109,11 @@ def _init_parser(subparsers):
 def _init(args):
     try:
         init_dataset(args.directory, method_id=args.method)
+        if args.method is None:
+            _set_wordlist(
+                {'yes': True, 'file': Path(sys.prefix) / Path('phos/wordlist')})
+            _set_keywords(
+                {'yes': True, 'file': Path(sys.prefix) / Path('phos/keywords')})
     except (ValueError, FileExistsError) as err:
         raise CommandLineError(str(err))
 
@@ -269,7 +275,7 @@ def _set_keywords(args):
     dataset = Dataset()
     # load keywords
     keywords = {}
-    for file in files(args.file):
+    for file in files(args['file']):
         method, keyword, keyword_data = load_keyword(file)
         keywords[keyword] = keyword_data
         if dataset.method != method:
@@ -277,7 +283,7 @@ def _set_keywords(args):
                 f"dataset has method '{feature_name(dataset.method)}' but "
                 f"wordlist was built with method '{feature_name(method)}'")
     # get confirmation
-    if not args.yes:
+    if not args['yes']:
         print('This will cause keyword matches to be deleted, you will need'
               'need to re-index the dataset afterwards.')
         if input('Do you wish to proceed (yes/NO): ').lower() != 'yes':
@@ -337,13 +343,13 @@ def _set_wordlist_parser(subparsers):
 
 
 def _set_wordlist(args):
-    method, words = load_wordlist(args.file)
+    method, words = load_wordlist(args['file'])
     dataset = Dataset()
     if dataset.method != method:
         raise CommandLineError(
             f"dataset has method '{feature_name(dataset.method)}' but "
             f"wordlist was built with method '{feature_name(method)}'")
-    if not args.yes:
+    if not args['yes']:
         print('This will cause bags of words and keyword matches to be '
               'deleted, you will need need to re-index the dataset '
               'afterwards.')
@@ -386,11 +392,11 @@ def main():
             if args.command == 'new-keyword':
                 _new_keyword(args)
             if args.command == 'set-keywords':
-                _set_keywords(args)
+                _set_keywords(vars(args))
             if args.command == 'new-wordlist':
                 _new_wordlist(args)
             if args.command == 'set-wordlist':
-                _set_wordlist(args)
+                _set_wordlist(vars(args))
         except (CommandLineError, RuntimeError) as err:
             sys.stderr.flush()
             sys.stdout.flush()
