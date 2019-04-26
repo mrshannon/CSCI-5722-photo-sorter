@@ -57,13 +57,20 @@ class Keyword(_Base):
     __tablename__ = 'keyword'
     id = Column(Integer, primary_key=True)
     name = Column(Unicode(256), nullable=False, index=True)
+
+
+class KeywordTheme(_Base):
+    __tablename__ = 'keyword_theme'
+    id = Column(Integer, primary_key=True)
+    keyword_id = Column(Integer, ForeignKey('keyword.id'), nullable=False)
+    keyword = relationship(
+        'Keyword', backref=backref('themes', cascade='all, delete-orphan'))
     word_histogram = Column(LargeBinary(), nullable=False)
 
 
 class KeywordMatch(_Base):
     __tablename__ = 'keyword_match'
     id = Column(Integer, primary_key=True)
-    match = Column(Float, nullable=False)
     image_id = Column(Integer, ForeignKey('image.id'), nullable=False)
     image = relationship('Image', backref='keywords')
     keyword_id = Column(Integer, ForeignKey('keyword.id'), nullable=False)

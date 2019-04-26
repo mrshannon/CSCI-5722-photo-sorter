@@ -1,9 +1,8 @@
-import sys
 import math
 import operator
 
 import numpy as np
-from sklearn.cluster import MeanShift, KMeans, DBSCAN
+from sklearn.cluster import KMeans
 
 
 class Clusterer:

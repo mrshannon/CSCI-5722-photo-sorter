@@ -60,7 +60,6 @@ class WordlistGenerator:
 
 
 def save_wordlist(file, words, method):
-    # import ipdb; ipdb.set_trace()
     header = np.array(
         [method, words.shape[1], words.shape[0], 0], dtype=np.uint16)
     with open(file, 'wb') as f:

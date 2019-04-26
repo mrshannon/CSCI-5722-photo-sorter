@@ -1,14 +1,14 @@
 import argparse
-import random
 import sys
 import warnings
 
 import progressbar
 
-from phos.common import ImageReadError, ImageReadWarning, image_files
+from phos.common import ImageReadWarning, files
+from phos.dataset import init_dataset, Dataset
 from phos.features import FeatureExtractorID, feature_name
-from phos.wordlist import WordlistGenerator, save_wordlist, load_wordlist
-from phos.dataset import init_dataset, find_dataset, Dataset
+from phos.wordlist import save_wordlist, load_wordlist
+from phos.keyword import save_keyword, load_keyword
 
 
 class CommandLineError(Exception):
@@ -62,6 +62,7 @@ def _progress(progress=False, name=None):
         if progress:
             return ProgressBar(name=name, max_value=max_value)
         return lambda x: x
+
     return internal
 
 
@@ -139,7 +140,10 @@ def _index(args):
             if warning.category is ImageReadWarning:
                 _print(warning.message)
         dataset.index_words(
-            progress=_progress(args.progress, 'Generating Bags of Visual Words'))
+            progress=_progress(
+                args.progress, 'Generating Bags of Visual Words'))
+        dataset.index_keywords(
+            progress=_progress(args.progress, 'Matching images to keywords'))
 
 
 def _cluster_parser(subparsers):
@@ -184,7 +188,7 @@ def _cluster(args):
         _print('Rearranging images into clusters...')
     dataset.cluster(cluster_mapping)
     if args.progress:
-        _print('Clustering complete!...')
+        _print('Clustering complete!')
 
 
 def _similar_parser(subparsers):
@@ -232,10 +236,48 @@ def _new_keyword_parser(subparsers):
         help=('images and/or directories of images to use to generate '
               'the keyword'))
     parser.add_argument(
-        '--wordlist', metavar='FILE', type=str, default=None,
-        help='visual wordlist file to use, default: package provided wordlist')
-    parser.add_argument(
         '-p', '--progress', action='store_true', help='show progress bar')
+
+
+def _new_keyword(args):
+    dataset = Dataset()
+    generator = dataset.keyword_generator(args.image)
+    keyword = generator.generate()
+    if args.progress:
+        _print(
+            f'Keyword generation complete!  ({keyword.shape[0]} themes found)')
+    save_keyword(args.keyword, keyword, dataset.method)
+
+
+def _set_keywords_parser(subparsers):
+    parser = subparsers.add_parser(
+        'set-keywords',
+        help='set keywords for the dataset from one or more files')
+    parser.add_argument(
+        'file', type=str, nargs='+', help='keyword files to use')
+    parser.add_argument(
+        '--yes', action='store_true', help="don't ask to confirm")
+
+
+def _set_keywords(args):
+    dataset = Dataset()
+    # load keywords
+    keywords = {}
+    for file in files(args.file):
+        method, keyword, keyword_data = load_keyword(file)
+        keywords[keyword] = keyword_data
+        if dataset.method != method:
+            raise CommandLineError(
+                f"dataset has method '{feature_name(dataset.method)}' but "
+                f"wordlist was built with method '{feature_name(method)}'")
+    # get confirmation
+    if not args.yes:
+        print('This will cause keyword matches to be deleted, you will need'
+              'need to re-index the dataset afterwards.')
+        if input('Do you wish to proceed (yes/NO): ').lower() != 'yes':
+            return
+    # set keywords
+    dataset.set_keywords(keywords)
 
 
 def _new_wordlist_parser(subparsers):
@@ -261,8 +303,6 @@ def _new_wordlist(args):
         raise CommandLineError(
             "'--features' must be greater than the number of 'words'")
     dataset = Dataset()
-    # if args.progress:
-    #     print('Loading features...', file=sys.stderr, flush=True)
     try:
         generator = dataset.wordlist_generator(
             progress=_progress(args.progress, 'Loading feature files'))
@@ -318,6 +358,7 @@ def _create_parser():
     _keyword_parser(subparsers)
     _keywords_parser(subparsers)
     _new_keyword_parser(subparsers)
+    _set_keywords_parser(subparsers)
     _new_wordlist_parser(subparsers)
     _set_wordlist_parser(subparsers)
     return parser
@@ -333,6 +374,10 @@ def main():
                 _index(args)
             if args.command == 'cluster':
                 _cluster(args)
+            if args.command == 'new-keyword':
+                _new_keyword(args)
+            if args.command == 'set-keywords':
+                _set_keywords(args)
             if args.command == 'new-wordlist':
                 _new_wordlist(args)
             if args.command == 'set-wordlist':

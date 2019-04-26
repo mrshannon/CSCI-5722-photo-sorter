@@ -12,6 +12,7 @@ from .features import (feature_name, feature_descriptor_size,
                        read_features_header, load_features,
                        create_feature_extractor, feature_rtree)
 from .wordlist import WordlistGenerator
+from .keyword import KeywordGenerator
 
 _DATASET_DIR = '.phos'
 
@@ -30,9 +31,8 @@ def init_dataset(path, method_id=None):
     if path.is_dir():
         ValueError(f"path '{path}' is not a directory")
     dataset_path = path / _DATASET_DIR
-    try:
-        dataset_path.mkdir()
-    except FileExistsError:
+    dataset_path.mkdir(exist_ok=True)
+    if (dataset_path / Path(db._DATABASE_NAME)).is_file():
         raise FileExistsError(f"existing dataset at '{dataset_path}'")
     method_id = create_feature_extractor(method_id).id
     db.init(dataset_path)
@@ -90,8 +90,6 @@ class Dataset:
             return str(path).endswith(_FEATURE_EXTENSION)
 
         orphans = []
-        # import ipdb; ipdb.set_trace()
-        # images = set(path.with_suffix('') for path in fs_images)
         feature_files = set(self._get_feature_file(path) for path in fs_images)
         for file in files(self.path, filter=filter_):
             if ((self.absolute_path(file) not in feature_files) or
@@ -137,7 +135,8 @@ class Dataset:
             raise ValueError("Both 'i' and 'j' must be less than 'divisions'.")
         dx = width / divisions
         dy = height / divisions
-        idx = list(feature_tree.intersection((dx * i, dy * j, dx * (i + 1), dy * (j + 1))))
+        idx = list(feature_tree.intersection(
+            (dx * i, dy * j, dx * (i + 1), dy * (j + 1))))
         return np.bincount(feature_words[idx], minlength=num_words)
 
     @staticmethod
@@ -230,6 +229,53 @@ class Dataset:
             self._create_bag_of_words_for_image(id, num_words, wordlist)
 
     @staticmethod
+    def get_keywords(id=False):
+        keywords = {}
+        with db.session_scope() as session:
+            for keyword in session.query(db.Keyword):
+                themes = [np.frombuffer(theme.word_histogram, dtype=np.float32)
+                          for theme in keyword.themes]
+                if id:
+                    keywords[keyword.id] = np.vstack(themes)
+                else:
+                    keywords[keyword.name] = np.vstack(themes)
+        return keywords
+
+    def _get_keywords_rtree(self):
+        keywords = self.get_keywords(id=True)
+        histogram_length = next(iter(keywords.values())).shape[1]
+        keywords_tree = RTree(histogram_length)
+        for id, histograms in keywords.items():
+            for histogram in histograms:
+                keywords_tree.insert(id, np.tile(histogram, 2))
+        return keywords_tree
+
+    def _index_image_keywords(self, image_id, keywords_tree):
+        with db.session_scope() as session:
+            image = session.query(db.Image).get(image_id)
+            image_keyword_ids = []
+            for bag_of_words in image.words:
+                histogram = np.frombuffer(
+                    bag_of_words.word_histogram, dtype=np.float32)
+                image_keyword_ids.extend(
+                    keywords_tree.nearest(np.tile(histogram, 2), 1))
+            for keyword_id in set(image_keyword_ids):
+                keyword = session.query(db.Keyword).get(keyword_id)
+                session.add(db.KeywordMatch(image=image, keyword=keyword))
+            image.has_keywords = True
+
+    def index_keywords(self, *, progress=None):
+        with db.session_scope() as session:
+            image_ids = flatten(session.query(db.Image.id).filter(
+                ~db.Image.has_keywords).all())
+        keywords = self.get_keywords(id=True)
+        if len(keywords) == 0:
+            return False
+        keywords_tree = self._get_keywords_rtree()
+        for id in get_progress(progress)(image_ids):
+            self._index_image_keywords(id, keywords_tree)
+
+    @staticmethod
     def create_clusterer(*, global_only=False, image_cohesion_factor=2):
         if image_cohesion_factor < 0:
             raise ValueError("'image_cohesion_factor' cannot be less than 0")
@@ -240,7 +286,7 @@ class Dataset:
                     continue
                 histogram = np.frombuffer(
                     bags_of_words.word_histogram, dtype=np.float32)
-                weight = 1 / (bags_of_words.divisions**image_cohesion_factor)
+                weight = 1 / (bags_of_words.divisions ** image_cohesion_factor)
                 clusterere.add_histogram(
                     bags_of_words.image_id,
                     histogram, weight=weight)
@@ -258,6 +304,33 @@ class Dataset:
                 if (cluster_dir.is_dir() and
                         len(list(cluster_dir.glob('*'))) == 0):
                     cluster_dir.rmdir()
+
+    def keyword_generator(self, paths):
+        images = set(str(self.relative_path(file)) for file in image_files(paths))
+        generator = KeywordGenerator()
+        with db.session_scope() as session:
+            query = session.query(db.BagOfWords.word_histogram).\
+                join(db.BagOfWords.image).\
+                filter(db.Image.path.in_(images)).\
+                filter(db.BagOfWords.divisions == 1)
+            for word_histogram in query:
+                generator.add_histogram(
+                    np.frombuffer(word_histogram[0], dtype=np.float32))
+        return generator
+
+    def set_keywords(self, keywords):
+        with db.session_scope() as session:
+            # remove invalid data
+            session.query(db.Image).update({'has_keywords': False})
+            session.query(db.Keyword).delete()
+            session.query(db.KeywordMatch).delete()
+            # add keywords
+            for keyword, data in keywords.items():
+                keyword_ = db.Keyword(name=keyword)
+                session.add(keyword_)
+                for histogram in data:
+                    session.add(db.KeywordTheme(
+                        keyword=keyword_, word_histogram=histogram.tobytes()))
 
     @staticmethod
     def get_wordlist():
