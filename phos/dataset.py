@@ -261,7 +261,7 @@ class Dataset:
                     bag_of_words.word_histogram, dtype=np.float32)
                 for id in keywords_tree.nearest(np.tile(histogram, 2), 1):
                     image_keyword_ids.setdefault(id, 0)
-                    image_keyword_ids[id] += 1/(divisions**1.8)
+                    image_keyword_ids[id] += 1/(divisions**1.5)
             image_keyword_ids = {
                 k: v for k, v in image_keyword_ids.items() if v >= 1}
             for keyword_id in set(image_keyword_ids):

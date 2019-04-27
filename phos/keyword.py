@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import numpy as np
-from sklearn.cluster import KMeans, MeanShift
+from sklearn.cluster import KMeans, MeanShift, DBSCAN
 
 from .features import FeatureExtractorID
 
@@ -18,10 +18,12 @@ class KeywordGenerator:
     def add_histogram(self, histogram):
         self._histograms.append(histogram)
 
-    def generate(self):
+    def generate(self, themes=None):
         self._pack()
-        meanshift = MeanShift().fit(self._histograms[0])
-        return meanshift.cluster_centers_
+        if themes:
+            return KMeans(n_clusters=themes).fit(
+                self._histograms[0]).cluster_centers_
+        return MeanShift().fit(self._histograms[0]).cluster_centers_
 
 
 def save_keyword(file, keyword, method):

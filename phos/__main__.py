@@ -220,7 +220,7 @@ def _keywords_parser(subparsers):
         'keywords',
         help=('list available keywords and how many images in the database '
               'match each keyword or if an image is given the keywords for '
-              'the image with correlations'))
+              'the image'))
     parser.add_argument(
         'image', metavar='IMAGE', type=str, nargs='?', default=None,
         help=('image to list keywords for, leave blank to list all keywords '
@@ -248,13 +248,17 @@ def _new_keyword_parser(subparsers):
         help=('images and/or directories of images to use to generate '
               'the keyword'))
     parser.add_argument(
+        '--themes', metavar='N', type=int, default=None,
+        help=('set the number of themes to use, '
+              'default: allow mean shift to decide'))
+    parser.add_argument(
         '-p', '--progress', action='store_true', help='show progress bar')
 
 
 def _new_keyword(args):
     dataset = Dataset()
     generator = dataset.keyword_generator(args.image)
-    keyword = generator.generate()
+    keyword = generator.generate(themes=args.themes)
     if args.progress:
         _print(
             f'Keyword generation complete!  ({keyword.shape[0]} themes found)')
